@@ -2715,10 +2715,15 @@ async function deleteDatabaseAccount(email, accountId) {
         WHERE supabase_user_id::text = $1 OR email_normalized = $2`,
       [String(accountId), normalizeEmail(email)]
     );
+    const oidcIdentities = await client.query(
+      `DELETE FROM public.arvio_oidc_identities WHERE account_id::text = $1`,
+      [String(accountId)]
+    );
     await client.query("COMMIT");
     return {
       skipped: false,
-      deleted: rows.rowCount + snapshots.rowCount + users.rowCount + accounts.rowCount
+      deleted: rows.rowCount + snapshots.rowCount + users.rowCount + accounts.rowCount + oidcIdentities.rowCount,
+      oidcIdentities: oidcIdentities.rowCount
     };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
@@ -2807,6 +2812,64 @@ async function triggerAccountDeletionWorker(event, jobId, workerToken) {
   if (!response.ok && response.status !== 202) {
     throw new Error(`Deletion worker could not start (${response.status})`);
   }
+}
+
+// Administrator-initiated deletion uses the same revocation and purge worker as
+// self-service deletion. Authorization is enforced by the admin endpoint before
+// this helper is called; account identity is rechecked here to avoid stale targets.
+async function queueAccountDeletionForAdmin(event, email, accountId) {
+  const normalizedEmail = normalizeEmail(email);
+  const store = authStores(event);
+  const account = await getJSONOrNull(store, accountKeyForEmail(normalizedEmail));
+  if (!account || String(account.accountId) !== String(accountId)) {
+    const error = new Error("Account not found or identity changed");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const deletionStore = accountDeletionStore(event);
+  const pointerKey = accountDeletionPointerKey(accountId);
+  const pointer = await getJSONOrNull(deletionStore, pointerKey);
+  if (pointer?.jobId) {
+    const activeJob = await getJSONOrNull(deletionStore, accountDeletionJobKey(pointer.jobId));
+    if (activeJob && ["queued", "running", "retrying"].includes(activeJob.status)) {
+      const error = new Error("Account deletion is already in progress");
+      error.statusCode = 409;
+      throw error;
+    }
+  }
+
+  const now = new Date();
+  const jobId = randomToken(24);
+  const workerToken = randomToken(32);
+  const job = {
+    jobId, status: "queued", accountId: String(accountId),
+    accountHash: sha256(String(accountId)), email: normalizedEmail,
+    emailHash: sha256(normalizedEmail), workerToken,
+    workerTokenHash: sha256(workerToken), attempts: 0,
+    createdAt: now.toISOString(), updatedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + ACCOUNT_DELETE_JOB_TTL_MS).toISOString(),
+    initiatedBy: "administrator"
+  };
+  await saveAccountDeletionJob(event, job);
+  await Promise.all([
+    deletionStore.setJSON(pointerKey, { jobId, status: "queued" }),
+    deletionStore.setJSON(accountDeletionEmailPointerKey(normalizedEmail), {
+      jobId, accountHash: job.accountHash, status: "queued"
+    })
+  ]);
+
+  try {
+    await triggerAccountDeletionWorker(event, jobId, workerToken);
+  } catch (error) {
+    await saveAccountDeletionJob(event, {
+      ...job, status: "failed",
+      error: publicError(error, "Deletion worker could not start"),
+      updatedAt: new Date().toISOString()
+    });
+    throw error;
+  }
+  return { jobId, status: "queued" };
 }
 
 async function handleAccountDeleteStart(event) {
@@ -3135,6 +3198,7 @@ module.exports = {
   deleteBlobPrefix,
   handleAccountDeleteStart,
   handleAccountDeleteStatus,
+  queueAccountDeletionForAdmin,
   runAccountDeletionJob,
   handleRetentionCleanup,
   handleAuthLogin,

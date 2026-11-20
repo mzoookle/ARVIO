@@ -390,6 +390,7 @@
 
         <div class="actions">
           <button class="btn primary" id="signin">Sign In</button>
+          <button class="btn" id="keycloakSignIn" type="button" hidden>Sign in with SSO</button>
           <button class="btn" id="signup">Create Account</button>
           <button class="btn" id="savepass" style="display:none;">Save New Password</button>
         </div>
@@ -398,6 +399,7 @@
       </div>
 
       <p class="small" id="tvHelp">If you opened this from a TV QR code, signing in will automatically pair that TV.</p>
+      <p class="discord-link"><a class="privacy-link" href="/account/security">Account security · Set an ARVIO app password</a></p>
       <p class="discord-link" id="discordEntry" hidden><a class="privacy-link" href="/?discord=1">Link your Premium Discord badge</a></p>
       <section id="discordClaim" hidden aria-label="Discord Premium badge">
         <button class="btn primary" id="discordConnect" type="button">Link Discord</button>
@@ -600,6 +602,18 @@
     const passEl = document.getElementById("password");
     const signInBtn = document.getElementById("signin");
     const signUpBtn = document.getElementById("signup");
+    const keycloakBtn = document.getElementById("keycloakSignIn");
+    keycloakBtn.hidden = window.ARVIO_OIDC_ENABLED !== true;
+    keycloakBtn.onclick = async () => {
+      try {
+        setBusy(true); setStatus("Connecting to Keycloak...");
+        const response = await fetch(`${FUNCTION_BASE}/oidc-start`, { method: "POST", headers: { "content-type": "application/json", apikey: APP_ANON_KEY, Authorization: `Bearer ${APP_ANON_KEY}` }, body: JSON.stringify({ return_to: window.ARVIO_WEB_ORIGIN }) });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Unable to start Keycloak sign-in");
+        sessionStorage.setItem("arvio.oidc.state", data.state);
+        window.location.assign(data.authorize_url);
+      } catch (error) { setStatus(error.message || String(error), "error"); setBusy(false); }
+    };
     // Private Cloud accounts are provisioned by the administrator; never expose
     // public registration from the self-hosted account portal.
     signUpBtn.hidden = true;
@@ -637,6 +651,7 @@
       signUpBtn.disabled = on;
       savePassBtn.disabled = on;
       forgotBtn.disabled = on;
+      keycloakBtn.disabled = on;
     }
 
     const EMAIL_RE = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,63}$/i;

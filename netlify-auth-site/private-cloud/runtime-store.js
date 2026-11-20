@@ -27,6 +27,7 @@ function runtimeStore() {
 
 module.exports = {
   connectLambda: () => {},
+  getRuntimePool,
   getStore: (name) => runtimeStore().getStore(name),
   close: async () => {
     if (pool) await pool.end();

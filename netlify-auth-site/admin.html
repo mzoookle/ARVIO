@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>ARVIO Private Cloud · Admin</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0a0d12;--panel:#121923;--panel2:#182230;--line:#293747;--text:#edf4fa;--muted:#9aabba;--accent:#62e6c5;--danger:#ff8f83;--blue:#80bfff}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 15% 0%,#123039 0,transparent 38%),var(--bg);color:var(--text);font:15px/1.5 Inter,system-ui,sans-serif}
+    button,input,select,textarea{font:inherit}button{cursor:pointer;border:1px solid var(--line);border-radius:9px;padding:9px 13px;color:var(--text);background:var(--panel2)}button.primary{background:var(--accent);border-color:var(--accent);color:#06251f;font-weight:700}button.danger{border-color:#75413d;color:#ffc0b8}button:disabled{opacity:.55;cursor:not-allowed}
+    input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:#0d141d;color:var(--text)}textarea{min-height:320px;resize:vertical;font:13px/1.55 ui-monospace,SFMono-Regular,monospace;tab-size:2}label{display:block;color:var(--muted);font-size:13px;margin:12px 0 6px}
+    .shell{width:min(1160px,calc(100% - 32px));margin:0 auto;padding:34px 0 64px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:26px}.brand{font-weight:750;letter-spacing:.02em}.brand span{color:var(--accent)}.muted{color:var(--muted)}.hidden{display:none!important}
+    .panel{background:linear-gradient(145deg,rgba(24,34,48,.96),rgba(16,23,33,.96));border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 18px 50px #0003}.login{max-width:430px;margin:9vh auto}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:18px 0}.stat{padding:18px;border-radius:13px;background:var(--panel2);border:1px solid var(--line)}.stat strong{display:block;font-size:28px}.stat small{color:var(--muted)}
+    .toolbar{display:flex;gap:12px;align-items:center;margin:18px 0}.toolbar input{max-width:360px}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px}table{width:100%;border-collapse:collapse;min-width:620px}th,td{text-align:left;padding:13px 15px;border-bottom:1px solid var(--line)}th{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);background:#101721}tr:last-child td{border-bottom:0}tbody tr:hover{background:#ffffff08}.user-email{font-weight:650}.actions{display:flex;gap:8px;flex-wrap:wrap}.status{min-height:22px;color:var(--muted);margin:10px 0}.error{color:var(--danger)}.success{color:var(--accent)}
+    .detail{margin-top:18px}.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.detail-item{background:#0e151e;border:1px solid var(--line);border-radius:10px;padding:13px}.detail-item small{display:block;color:var(--muted);margin-bottom:3px}.secret{font:600 17px ui-monospace,monospace;word-break:break-all;background:#09131a;border:1px dashed #4b8b7e;padding:13px;border-radius:9px;margin:12px 0}.notice{border-left:3px solid var(--blue);padding:10px 13px;background:#142333;color:#c5d9ec;border-radius:5px;margin:12px 0}.config-toolbar{display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;margin:16px 0}.config-editor{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}.config-editor textarea{margin-top:8px}.config-help{font-size:13px;color:var(--muted);margin:8px 0 14px}.config-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.config-actions .status{flex:1;min-width:180px}.footer{margin-top:24px;color:var(--muted);font-size:12px}
+    @media(max-width:700px){.grid{grid-template-columns:1fr}.top{align-items:flex-start}.toolbar{align-items:stretch;flex-direction:column}.toolbar input{max-width:none}.detail-grid{grid-template-columns:1fr}.config-toolbar{grid-template-columns:1fr}.panel{padding:16px}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="top"><div class="brand">ARVIO <span>PRIVATE CLOUD</span> / ADMIN</div><a href="/" class="muted">Account portal</a></header>
+    <section id="login" class="panel login">
+      <h1>Administrator sign in</h1>
+      <p class="muted">Sign in with an account authorized by the Keycloak <code>/arvio</code> group or the server's administrator email allowlist.</p>
+      <div class="status" id="oidcStatus" role="status"></div>
+      <button class="primary" id="keycloakLogin" type="button" style="width:100%;margin-bottom:16px">Sign in with SSO</button>
+      <div class="muted" style="text-align:center;margin:8px 0">or use an ARVIO account</div>
+      <form id="loginForm"><label for="email">Email</label><input id="email" type="email" autocomplete="username" required /><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required /><div class="status" id="loginStatus" role="status"></div><button class="primary" type="submit" style="width:100%">Sign in</button></form>
+    </section>
+    <section id="dashboard" class="hidden">
+      <div class="top"><div><h1 style="margin:0">User management</h1><div class="muted" id="adminIdentity"></div></div><button id="logout">Sign out</button></div>
+      <div class="grid"><div class="stat"><strong id="totalUsers">—</strong><small>Total accounts</small></div><div class="stat"><strong id="withPassword">—</strong><small>Password enabled</small></div><div class="stat"><strong id="withSync">—</strong><small>Password setup needed</small></div></div>
+      <section class="panel"><div class="toolbar"><input id="search" type="search" placeholder="Search users by email" /><button id="refresh">Refresh list</button></div><div class="status" id="listStatus" role="status"></div><div class="table-wrap"><table><thead><tr><th>Email</th><th>Created</th><th>Account</th><th>Keycloak</th><th>Actions</th></tr></thead><tbody id="usersBody"></tbody></table></div></section>
+      <section id="userDetail" class="panel detail hidden"><div class="top"><div><h2 id="detailEmail" style="margin:0">User</h2><div class="muted">Account and sync overview</div></div><button id="closeDetail">Close</button></div><div class="detail-grid" id="detailGrid"></div><div style="margin-top:18px"><h3>Keycloak identity</h3><div class="detail-grid" id="oidcDetail"></div></div><div style="margin-top:18px"><h3>Profiles</h3><div id="profiles" class="detail-grid"></div></div>
+        <section id="configEditor" class="config-editor hidden">
+          <h3 style="margin-top:0">Profile configuration</h3>
+          <p class="muted">These editors operate on the existing ARVIO account-sync fields. Values are JSON so fields introduced by newer ARVIO releases remain available instead of being silently discarded.</p>
+          <div class="notice">Provider URLs, API keys, and connection credentials may be present in these records. Treat anything displayed here as confidential. Add-on removal follows ARVIO's current sync behavior and removes that add-on from the account's other profiles too.</div>
+          <div class="config-toolbar">
+            <div><label for="configProfile">Profile</label><select id="configProfile"></select></div>
+            <div><label for="configSection">Configuration area</label><select id="configSection"><option value="profileSettings">Playback &amp; home servers</option><option value="addons">Add-ons / media sources</option><option value="iptv">IPTV providers &amp; playlists</option><option value="catalogs">Catalogs &amp; visibility</option><option value="globalSettings">Account-wide preferences</option><option value="integrations">Tracking integrations</option></select></div>
+            <button id="reloadConfig" type="button">Reload</button>
+          </div>
+          <label for="configJson" id="configJsonLabel">Configuration JSON</label>
+          <textarea id="configJson" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+          <p class="config-help" id="configHelp">Edit the JSON object and save. Unknown fields are preserved when they remain in the submitted object.</p>
+          <div class="config-actions"><button class="primary" id="saveConfig" type="button">Save configuration</button><div class="status" id="configStatus" role="status"></div></div>
+        </section></section>
+      <section id="resetResult" class="panel detail hidden"><h3 style="margin-top:0">Temporary password generated</h3><p class="notice">Share this password with the user through a trusted private channel. It is shown only once here; it is not emailed or stored in the audit log.</p><div class="secret" id="temporaryPassword"></div><div class="actions"><button class="primary" id="copyPassword">Copy temporary password</button><button id="dismissPassword">Dismiss</button></div></section>
+    </section>
+    <div class="footer">Private administrator interface. All administrative API actions are authorized and audited server-side.</div>
+  </main>
+<script src="/portal-config.js"></script>
+<script type="module">
+  const API = "/.netlify/functions";
+  const ANON = String(window.ARVIO_APP_ANON_KEY || "");
+  const $ = (id) => document.getElementById(id);
+  let token = "";
+  let currentAdminEmail = "";
+  let users = [];
+  let selectedEmail = "";
+  let configProfiles = [];
+  let configData = null;
+  let configDirty = false;
+  let activeConfigSection = "profileSettings";
+  const setStatus = (id, message, kind="") => { const el=$(id); el.textContent=message; el.className=`status ${kind}`; };
+  async function request(route, options={}) {
+    const response = await fetch(`${API}/${route}`, { ...options, headers: { ...(options.headers||{}), ...(token?{Authorization:`Bearer ${token}`}:{}) } });
+    const body = await response.json().catch(()=>({}));
+    if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
+    return body;
+  }
+  function showDashboard() { $("login").classList.add("hidden"); $("dashboard").classList.remove("hidden"); }
+  function showLogin() { $("dashboard").classList.add("hidden"); $("login").classList.remove("hidden"); }
+  function consumeOidcSession() {
+    const fragment = new URLSearchParams(location.hash.replace(/^#/, ""));
+    const accessToken = fragment.get("access_token");
+    if (!accessToken) return null;
+    const session = { token: accessToken, email: fragment.get("email") || "" };
+    history.replaceState(null, document.title, location.pathname + location.search);
+    return session;
+  }
+  function date(value) { if(!value)return "—"; const d=new Date(value); return Number.isNaN(d.getTime())?"—":d.toLocaleDateString(); }
+  async function loadUsers() {
+    setStatus("listStatus","Loading accounts…");
+    const result = await request("admin-users"); users = result.users || [];
+    $("totalUsers").textContent = String(users.length);
+    $("withPassword").textContent = String(users.filter(u=>u.hasPassword).length);
+    $("withSync").textContent = String(users.filter(u=>!u.hasPassword).length);
+    renderUsers(); setStatus("listStatus",`${users.length} account${users.length===1?"":"s"} found.`,"success");
+  }
+  function renderUsers() {
+    const query = $("search").value.trim().toLowerCase();
+    const visible = users.filter(user=>user.email.toLowerCase().includes(query));
+    $("usersBody").replaceChildren();
+    for (const user of visible) {
+      const tr=document.createElement("tr");
+      const email=document.createElement("td"); email.className="user-email"; email.textContent=user.email;
+      const created=document.createElement("td"); created.textContent=date(user.createdAt);
+      const status=document.createElement("td"); status.textContent=user.hasPassword?"Password set":"Password setup needed";
+      const oidc=document.createElement("td"); oidc.textContent=user.oidc?.linked?"Linked":"Not linked"; oidc.className=user.oidc?.linked?"success":"muted";
+      const actions=document.createElement("td"); actions.className="actions";
+      const view=document.createElement("button"); view.textContent="View"; view.addEventListener("click",()=>openUser(user.email));
+      const reset=document.createElement("button"); reset.className="danger"; reset.textContent="Reset password"; reset.addEventListener("click",()=>resetPassword(user.email));
+      const remove=document.createElement("button"); remove.className="danger"; remove.textContent="Delete account";
+      const isCurrentAdmin = user.email.toLowerCase() === currentAdminEmail;
+      remove.disabled = isCurrentAdmin;
+      remove.title = isCurrentAdmin ? "You cannot delete the account currently signed in to the admin dashboard." : "Permanently delete this account and its data";
+      remove.addEventListener("click",()=>deleteAccount(user.email));
+      actions.append(view,reset,remove); tr.append(email,created,status,oidc,actions); $("usersBody").append(tr);
+    }
+    if(!visible.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=5;td.textContent="No matching users.";td.className="muted";tr.append(td);$("usersBody").append(tr);}
+  }
+  const CONFIG_SECTIONS = {
+    profileSettings: { label: "Playback & home servers", help: "Profile-scoped playback, subtitle, source-priority, and home-server connection settings. homeServerConnectionJson is the Android-compatible home-server connection record." },
+    addons: { label: "Add-ons / media sources", help: "Installed add-on records for this profile. Removing an entry creates an account-wide removal marker, matching ARVIO's existing add-on sync behavior." },
+    iptv: { label: "IPTV providers & playlists", help: "Playlist URLs, EPGs, Stalker portals, favorites, hidden groups, ordering, and related IPTV state for this profile." },
+    catalogs: { label: "Catalogs & visibility", help: "Catalog definitions and per-profile hidden catalog ID lists." },
+    globalSettings: { label: "Account-wide preferences", help: "These settings are account-wide rather than profile-specific. Only the supported top-level ARVIO global settings are editable here." },
+    integrations: { label: "Tracking integrations", help: "Trakt, SIMKL, and MDBList credentials and routing preferences for this profile. Values are sensitive; never paste this JSON into a public issue or chat." }
+  };
+  function currentConfigValue() {
+    return configData?.config?.[$("configSection").value] ?? {};
+  }
+  function renderConfigEditor() {
+    const section = $("configSection").value;
+    activeConfigSection = section;
+    const meta = CONFIG_SECTIONS[section] || CONFIG_SECTIONS.profileSettings;
+    $("configJsonLabel").textContent = `${meta.label} (JSON)`;
+    $("configHelp").textContent = meta.help;
+    $("configJson").value = JSON.stringify(currentConfigValue(), null, 2);
+    configDirty = false;
+    setStatus("configStatus", "Loaded from the current account sync snapshot.", "success");
+  }
+  async function loadProfileConfig(profileId) {
+    if (!selectedEmail) return;
+    setStatus("configStatus", "Loading profile configuration…");
+    const suffix = profileId ? `&profileId=${encodeURIComponent(profileId)}` : "";
+    configData = await request(`admin-profile-config?email=${encodeURIComponent(selectedEmail)}${suffix}`);
+    configProfiles = configData.profiles || [];
+    $("configProfile").replaceChildren();
+    for (const profile of configProfiles) {
+      const option = document.createElement("option"); option.value = profile.id; option.textContent = `${profile.name} · ${profile.id}`; $("configProfile").append(option);
+    }
+    $("configProfile").value = configData.profileId;
+    $("configEditor").classList.toggle("hidden", !configProfiles.length);
+    renderConfigEditor();
+  }
+  async function openUser(email) {
+    selectedEmail=email; configData=null; configProfiles=[]; $("userDetail").classList.remove("hidden"); $("detailEmail").textContent=email; $("detailGrid").replaceChildren(); $("oidcDetail").replaceChildren(); $("profiles").replaceChildren(); $("configEditor").classList.add("hidden");
+    try {
+      const result=await request(`admin-user?email=${encodeURIComponent(email)}`); const a=result.account, s=result.sync, o=result.oidc || {linked:false,groups:[]};
+      const values=[ ["Account ID",a.accountId], ["Created",date(a.createdAt)], ["Last account update",date(a.updatedAt)], ["Password",a.hasPassword?"Set":"Not set"], ["Sync snapshot",s?"Present":"Not found"], ["Profile count",s?String(s.profileCount):"—"], ["Last sync update",date(s?.updatedAt || s?.payloadUpdatedAt)], ["Snapshot source",s?.source || "—"] ];
+      for(const [label,value] of values){const box=document.createElement("div");box.className="detail-item";const small=document.createElement("small");small.textContent=label;const strong=document.createElement("strong");strong.textContent=value;box.append(small,strong);$("detailGrid").append(box);}
+      const oidcValues = [["Status",o.linked?"Linked":"Not linked"],["Provider",o.provider||"—"],["Identity email",o.email||"—"],["Linked",date(o.linkedAt)],["Last Keycloak login",date(o.lastLoginAt)],["Keycloak groups",Array.isArray(o.groups)&&o.groups.length?o.groups.join(", "):"—"]];
+      for(const [label,value] of oidcValues){const box=document.createElement("div");box.className="detail-item";const small=document.createElement("small");small.textContent=label;const strong=document.createElement("strong");strong.textContent=value;box.append(small,strong);$("oidcDetail").append(box);}
+      if(s?.profileNames?.length){for(const profile of s.profileNames){const box=document.createElement("div");box.className="detail-item";const small=document.createElement("small");small.textContent="Profile";const strong=document.createElement("strong");strong.textContent=profile.name;const id=document.createElement("div");id.className="muted";id.textContent=profile.id;box.append(small,strong,id);$("profiles").append(box);}} else {const p=document.createElement("p");p.className="muted";p.textContent="No profile names available in the current sync snapshot.";$("profiles").append(p);}
+      await loadProfileConfig("");
+      $("userDetail").scrollIntoView({behavior:"smooth",block:"start"});
+    } catch(error){setStatus("listStatus",error.message,"error");}
+  }
+  async function resetPassword(email) {
+    if(!confirm(`Generate a new temporary password for ${email}? Their current password will stop working immediately.`))return;
+    try { const result=await request("admin-password-reset",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email})}); $("temporaryPassword").textContent=result.temporaryPassword; $("resetResult").classList.remove("hidden"); $("resetResult").scrollIntoView({behavior:"smooth",block:"start"}); }
+    catch(error){setStatus("listStatus",error.message,"error");}
+  }
+  async function deleteAccount(email) {
+    if (email.toLowerCase() === currentAdminEmail) {
+      setStatus("listStatus", "You cannot delete the account currently signed in to the admin dashboard.", "error");
+      return;
+    }
+    const accepted = confirm(`PERMANENTLY DELETE ${email}?\n\nThis removes the ARVIO account, synced profiles/settings, linked Keycloak identity, refresh sessions, TV sessions, and associated private-cloud records. This cannot be undone.`);
+    if (!accepted) return;
+    const typed = prompt(`To confirm permanent deletion, type this exact email address:\n\n${email}`);
+    if (typed !== email) {
+      if (typed !== null) setStatus("listStatus", "Email confirmation did not match. Nothing was deleted.", "error");
+      return;
+    }
+    setStatus("listStatus", `Queuing permanent deletion for ${email}…`);
+    try {
+      const result = await request("admin-account-delete", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, confirmation: typed })
+      });
+      if (result.audit_warning) {
+        setStatus("listStatus", `Deletion queued for ${email}, but the audit log write reported a problem. Check API logs.`, "error");
+      } else {
+        setStatus("listStatus", `Deletion queued for ${email}. Access is being revoked and account data is being purged.`, "success");
+      }
+      if (selectedEmail === email) { selectedEmail = ""; $("userDetail").classList.add("hidden"); }
+      await loadUsers();
+    } catch (error) {
+      setStatus("listStatus", error.message === "cannot_delete_current_admin_account"
+        ? "You cannot delete the account currently signed in to the admin dashboard."
+        : error.message, "error");
+    }
+  }
+  $("keycloakLogin").addEventListener("click",async()=>{
+    setStatus("oidcStatus","Redirecting to Keycloak…");
+    try {
+      const response=await fetch(`${API}/oidc-start`,{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:`Bearer ${ANON}`},body:JSON.stringify({return_to:`${window.location.origin}/admin`})});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(data.error||"Unable to start Keycloak sign-in.");
+      if(!data.authorize_url||!data.state)throw new Error("Keycloak did not return a valid authorization request.");
+      sessionStorage.setItem("arvio.oidc.state",data.state);
+      location.assign(data.authorize_url);
+    } catch(error){setStatus("oidcStatus",error.message,"error");}
+  });
+  async function resumeOidcLogin() {
+    const session=consumeOidcSession();
+    if(!session)return;
+    token=session.token;
+    try {
+      await loadUsers();
+      $("adminIdentity").textContent=`Signed in with Keycloak as ${session.email || "administrator"}`;
+      showDashboard();
+    } catch(error) {
+      token=""; showLogin(); setStatus("oidcStatus",error.message==="admin_access_required"?"Your Keycloak account is not in the /arvio administrator group.":error.message,"error");
+    }
+  }
+  $("loginForm").addEventListener("submit",async(event)=>{
+    event.preventDefault(); setStatus("loginStatus","Signing in…");
+    try { const response=await fetch(`${API}/auth-login`,{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:`Bearer ${ANON}`},body:JSON.stringify({email:$('email').value,password:$('password').value})}); const data=await response.json().catch(()=>({})); if(!response.ok)throw new Error(data.error||"Sign in failed"); token=data.access_token||""; if(!token)throw new Error("Sign-in response did not include an access token."); currentAdminEmail = $('email').value.trim().toLowerCase(); $("adminIdentity").textContent=`Signed in as ${currentAdminEmail}`; await loadUsers(); showDashboard(); }
+    catch(error){token="";showLogin();setStatus("loginStatus",error.message,"error");}
+  });
+  $("logout").addEventListener("click",()=>{token="";currentAdminEmail="";users=[];showLogin();$("password").value="";setStatus("loginStatus","Signed out.");setStatus("oidcStatus","Signed out.");});
+  $("refresh").addEventListener("click",()=>loadUsers().catch(error=>setStatus("listStatus",error.message,"error")));
+  $("search").addEventListener("input",renderUsers);
+  $("closeDetail").addEventListener("click",()=>$("userDetail").classList.add("hidden"));
+  $("copyPassword").addEventListener("click",async()=>{try{await navigator.clipboard.writeText($("temporaryPassword").textContent);$("copyPassword").textContent="Copied";}catch{$("copyPassword").textContent="Copy unavailable";}});
+  $("dismissPassword").addEventListener("click",()=>{$("temporaryPassword").textContent="";$("resetResult").classList.add("hidden");$("copyPassword").textContent="Copy temporary password";});
+  $("configSection").addEventListener("change",()=>{if(configDirty&&!confirm("Discard unsaved JSON edits?")){ $("configSection").value=activeConfigSection; return;} renderConfigEditor();});
+  $("configProfile").addEventListener("change",async()=>{if(configDirty&&!confirm("Discard unsaved JSON edits and switch profiles?")){ $("configProfile").value=configData?.profileId||""; return;} try{await loadProfileConfig($("configProfile").value);}catch(error){setStatus("configStatus",error.message,"error");}});
+  $("configJson").addEventListener("input",()=>{configDirty=true;setStatus("configStatus","Unsaved changes.");});
+  $("reloadConfig").addEventListener("click",async()=>{if(configDirty&&!confirm("Discard unsaved JSON edits and reload from the server?"))return;try{await loadProfileConfig($("configProfile").value);}catch(error){setStatus("configStatus",error.message,"error");}});
+  $("saveConfig").addEventListener("click",async()=>{
+    let value; try{value=JSON.parse($("configJson").value);}catch(error){setStatus("configStatus",`Invalid JSON: ${error.message}`,"error");return;}
+    const section=$("configSection").value, profileId=$("configProfile").value;
+    const message=section==="addons"?"Save these add-on changes? Any removed add-on will be removed from every profile on this account.":`Save ${CONFIG_SECTIONS[section].label} for this account?`;
+    if(!confirm(message))return;
+    setStatus("configStatus","Saving configuration…");$("saveConfig").disabled=true;
+    try{
+      await request("admin-profile-config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:selectedEmail,profileId,section,value})});
+      await loadProfileConfig(profileId);
+      setStatus("configStatus","Saved. The updated account snapshot is available to Web and Android clients on their next sync.","success");
+    }catch(error){setStatus("configStatus",error.message,"error");}
+    finally{$("saveConfig").disabled=false;}
+  });
+  resumeOidcLogin();
+</script>
+</body>
+</html>
