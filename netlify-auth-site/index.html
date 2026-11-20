@@ -330,49 +330,22 @@
       gap: 16px;
     }
 
-    .premium-banner {
-      padding: 20px 28px 22px;
-      border-top: 1px solid rgba(13, 240, 194, 0.16);
-      background: linear-gradient(125deg, rgba(13, 240, 194, 0.08), rgba(103, 183, 255, 0.04));
+    .site-note {
+      padding: 14px 24px 18px;
+      border-top: 1px solid rgba(255, 255, 255, 0.07);
+      text-align: center;
+      font-size: 12px;
     }
-    .premium-eyebrow {
-      margin: 0 0 8px;
-      color: var(--accent-1);
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-    }
-    .premium-title { margin: 0; font-size: 18px; line-height: 1.3; letter-spacing: -0.025em; }
-    .premium-copy { margin: 8px 0 14px; color: #bcb8b0; font-size: 13px; line-height: 1.55; }
-    .premium-bottom {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 10px 14px;
-    }
-    .premium-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 12px;
-      min-height: 44px;
-      padding: 10px 14px;
-      border: 1px solid rgba(13, 240, 194, 0.28);
-      border-radius: 10px;
-      background: rgba(13, 240, 194, 0.08);
-      color: var(--text);
-      font-size: 13px;
-      font-weight: 600;
+    .site-note a {
+      color: var(--muted);
       text-decoration: none;
     }
-    .premium-link:hover { background: rgba(13, 240, 194, 0.16); }
-    .premium-link:focus-visible { outline: 2px solid var(--accent-1); outline-offset: 4px; }
-    .premium-note { color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .site-note a:hover { color: var(--text); }
+    .site-note a:focus-visible { outline: 2px solid var(--accent-1); outline-offset: 4px; }
+
     .discord-link { margin: 12px 0 0; text-align: center; }
 
     @media (max-width: 480px) {
-      .premium-banner { padding: 18px 22px 20px; }
       .head { padding: 24px 22px 18px; }
       .body { padding: 18px 22px 22px; }
       .title { font-size: 22px; }
@@ -437,15 +410,9 @@
         <a class="privacy-link" href="/delete-account">Delete account</a>
       </div>
     </section>
-    <aside class="premium-banner" aria-labelledby="premium-title">
-      <p class="premium-eyebrow">ARVIO Premium · Optional membership</p>
-      <h2 class="premium-title" id="premium-title">Your ARVIO. In your browser.</h2>
-      <p class="premium-copy">Hosted for your iPhone, iPad and computer. Your membership helps fund ARVIO’s hosting and development.</p>
-      <div class="premium-bottom">
-        <a class="premium-link" href="https://arvio.tv/premium/" target="_blank" rel="noopener noreferrer">Explore Premium <span aria-hidden="true">↗</span></a>
-        <span class="premium-note">Android &amp; TV stay free.</span>
-      </div>
-    </aside>
+    <div class="site-note">
+      <a href="https://arvio.tv/" target="_blank" rel="noopener noreferrer">About ARVIO <span aria-hidden="true">↗</span></a>
+    </div>
   </main>
 
   <!-- Starfield + shooting-stars -->
@@ -590,8 +557,9 @@
     })();
   </script>
 
+  <script src="/portal-config.js"></script>
   <script type="module">
-    const APP_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpyZHd2b3J0Y2Zub3lrbHR6dXFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY3NDU4NzMsImV4cCI6MjA4MjMyMTg3M30.YfKZbSwxGs6_xMd6jkDtn1PKkfuyOHo9qVhUvFRddGU";
+    const APP_ANON_KEY = String(window.ARVIO_APP_ANON_KEY || "");
 
     const FUNCTION_BASE = "/.netlify/functions";
     const qs = new URLSearchParams(window.location.search);
@@ -612,8 +580,13 @@
           url.protocol === "https:" &&
           (url.hostname === "arvio-web.netlify.app" ||
             url.hostname.endsWith("--arvio-web.netlify.app"));
+        const privateWebOrigin = String(window.ARVIO_WEB_ORIGIN || "").replace(/\/+$/, "");
+        const isPrivateWebOrigin =
+          url.protocol === "https:" &&
+          (url.origin === window.location.origin || (privateWebOrigin && url.origin === privateWebOrigin));
 
-        return !url.username && !url.password && (isLocal || isArvioDomain || isArvioWebPreview);
+        return !url.username && !url.password &&
+          (isLocal || isArvioDomain || isArvioWebPreview || isPrivateWebOrigin);
       } catch {
         return false;
       }
@@ -627,6 +600,10 @@
     const passEl = document.getElementById("password");
     const signInBtn = document.getElementById("signin");
     const signUpBtn = document.getElementById("signup");
+    // Private Cloud accounts are provisioned by the administrator; never expose
+    // public registration from the self-hosted account portal.
+    signUpBtn.hidden = true;
+    document.getElementById("signupNotice").hidden = true;
     const savePassBtn = document.getElementById("savepass");
     const forgotBtn = document.getElementById("forgot");
     const hashParams = new URLSearchParams((window.location.hash || "").replace(/^#/, ""));
@@ -645,7 +622,7 @@
     };
     const badgeResult = qs.get("discord_badge");
     const hasBadgeResult = Object.hasOwn(badgeMessages, badgeResult);
-    const isDiscordMode = standaloneAccount && (qs.get("discord") === "1" || hasBadgeResult);
+    const isDiscordMode = false; // Private Cloud does not include hosted Premium Discord badge linking.
     const discordClaim = document.getElementById("discordClaim");
     const discordConnect = document.getElementById("discordConnect");
     let discordAccessToken = "";
@@ -808,7 +785,7 @@
       pairCodeEl.textContent = pairCode;
     }
     if (isRecoveryMode || isPasswordSetupMode) applyRecoveryModeUi();
-    if (standaloneAccount && !isDiscordMode) document.getElementById("discordEntry").hidden = false;
+    if (standaloneAccount && !isDiscordMode) document.getElementById("discordEntry").hidden = true;
     if (isDiscordMode) {
       document.querySelector("h1").textContent = "Premium Discord badge";
       subtitleEl.textContent = "Sign in with the ARVIO account that has Premium. Both monthly memberships and 12-month passes qualify.";
@@ -943,11 +920,11 @@
         let setupHint = "";
         if (json.code === "password_setup_required") {
           if (json.email_sent) {
-            setupHint = " We sent you an email to create your new ARVIO Cloud password.";
+            setupHint = " A password setup email was requested.";
           } else if (json.setup_error) {
             setupHint = ` Password setup email could not be sent: ${json.setup_error}`;
           } else {
-            setupHint = " Use Forgot password to create your new ARVIO Cloud password.";
+            setupHint = " Contact your server administrator to reset your ARVIO Cloud password.";
           }
         }
         throw new Error((json.error || "Sign in failed") + setupHint);
@@ -961,32 +938,6 @@
       if (!password) throw new Error("Password is required.");
       if (password.length < 6) throw new Error("Password must be at least 6 characters.");
       return await createAccountViaServer(email, password);
-    }
-
-    async function sendPasswordReset() {
-      const email = requireValidEmail(emailEl.value, false);
-      assertEmailSendCooldown("reset", email);
-      const resp = await fetch(`${FUNCTION_BASE}/cloud-auth-reset`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: APP_ANON_KEY,
-          Authorization: `Bearer ${APP_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          email
-        })
-      });
-      const json = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(json.error || "Password reset failed");
-      if (!json.account_exists) {
-        throw new Error("No ARVIO Cloud account was found for this email.");
-      }
-      if (!json.email_sent) {
-        throw new Error("Account found, but the password email could not be sent. Please try again in a minute.");
-      }
-      markEmailSent("reset", email);
-      return { ...json, email };
     }
 
     async function saveNewPassword() {
@@ -1032,7 +983,7 @@
             url.hash = `access_token=${creds.tokens.access_token}&refresh_token=${creds.tokens.refresh_token}&email=${encodeURIComponent(creds.email)}&expires_in=${creds.tokens.expires_in || 3600}`;
             window.location.href = url.toString();
           } else {
-            window.location.href = "https://arvio.tv";
+            window.location.href = window.location.origin + "/";
           }
         }, 900);
       } catch (err) {
@@ -1054,7 +1005,7 @@
           setStatus("Creating account and pairing TV...");
           await signUpAndPairViaServer(email, password);
           setStatus("Account created and TV paired. Redirecting...", "ok");
-          setTimeout(() => { window.location.href = "https://arvio.tv"; }, 1200);
+          setTimeout(() => { window.location.href = window.location.origin + "/"; }, 1200);
           return;
         }
 
@@ -1070,7 +1021,7 @@
             url.hash = `access_token=${creds.tokens.access_token}&refresh_token=${creds.tokens.refresh_token}&email=${encodeURIComponent(creds.email)}&expires_in=${creds.tokens.expires_in || 3600}`;
             window.location.href = url.toString();
           } else {
-            window.location.href = "https://arvio.tv";
+            window.location.href = window.location.origin + "/";
           }
         }, 1200);
       } catch (err) {
@@ -1092,17 +1043,8 @@
       }
     };
 
-    forgotBtn.onclick = async () => {
-      try {
-        setBusy(true);
-        setStatus("Sending new password email...");
-        const result = await sendPasswordReset();
-        setStatus(`New password email sent to ${result.email}. Check your inbox and spam folder.`, "ok");
-      } catch (err) {
-        setStatus(err.message || String(err), "error");
-      } finally {
-        setBusy(false);
-      }
+    forgotBtn.onclick = () => {
+      setStatus("Password resets are managed by your server administrator. Please contact them for assistance.", "");
     };
 
     savePassBtn.onclick = async () => {
@@ -1111,7 +1053,7 @@
         setStatus("Saving new password...");
         await saveNewPassword();
         setStatus("Password updated. Redirecting to sign in...", "ok");
-        setTimeout(() => { window.location.href = "https://auth.arvio.tv/"; }, 1200);
+        setTimeout(() => { window.location.href = window.location.origin + "/"; }, 1200);
       } catch (err) {
         setStatus(err.message || String(err), "error");
       } finally {

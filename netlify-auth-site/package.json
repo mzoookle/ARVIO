@@ -9,7 +9,10 @@
     "db:status": "netlify database status",
     "db:import": "node scripts/import-supabase-export.mjs",
     "blobs:import": "node scripts/import-supabase-export-blobs.mjs",
-    "retention:migrate": "node scripts/migrate-auth-retention-indexes.mjs"
+    "retention:migrate": "node scripts/migrate-auth-retention-indexes.mjs",
+    "private-cloud:dev": "ARVIO_PRIVATE_CLOUD=true node private-cloud/server.js",
+    "private-cloud:test": "node --test private-cloud/tests/*.test.js",
+    "private-cloud:create-account": "node private-cloud/create-account.js"
   },
   "dependencies": {
     "@netlify/blobs": "^10.7.9",

@@ -4,11 +4,12 @@ exports.handler = async (event) => {
   const cors = options(event);
   if (cors) return cors;
 
+  const privateCloud = process.env.ARVIO_PRIVATE_CLOUD === "true";
   return json(200, {
-    backend: "netlify",
-    cloudSync: "netlify_account_snapshot",
+    backend: privateCloud ? "self_hosted" : "netlify",
+    cloudSync: privateCloud ? "postgres_account_snapshot" : "netlify_account_snapshot",
     authSurface: "netlify_native_auth",
-    tvAuthStorage: "netlify_blobs",
+    tvAuthStorage: privateCloud ? "postgres_blob_compat" : "netlify_blobs",
     migratedPasswordSetup: true,
     emailProviderConfigured: !!(
       process.env.RESEND_API_KEY ||
@@ -21,6 +22,8 @@ exports.handler = async (event) => {
       trakt: true
     },
     supabaseFallback: false,
+    privateCloud: privateCloud,
+    publicSignupEnabled: !privateCloud || process.env.ARVIO_ALLOW_SIGNUP === "true",
     mediaProxy: false,
     timestamp: new Date().toISOString()
   });

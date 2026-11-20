@@ -5,7 +5,7 @@ import "./login.css";
 
 import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import { hasNetlifyBackendConfig, hasSupabaseConfig, getAuthPortalUrl } from "@/lib/config";
+import { hasNetlifyBackendConfig, hasPrivateCloudConfig, hasSupabaseConfig, getAuthPortalUrl } from "@/lib/config";
 import { capturePremiumAttribution } from "@/lib/premiumAnalytics";
 import { useAppPick } from "@/lib/store";
 import { partnerLoginRedirect } from "@/lib/partnerLinks";
@@ -13,7 +13,7 @@ import { partnerLoginRedirect } from "@/lib/partnerLinks";
 export function LoginScreen() {
   const translateUi = useTranslation();
   const { backToProfiles, cloudLoginRequired } = useAppPick("backToProfiles", "cloudLoginRequired");
-  const cloudConfigured = hasNetlifyBackendConfig() || hasSupabaseConfig();
+  const cloudConfigured = hasNetlifyBackendConfig() || hasPrivateCloudConfig() || hasSupabaseConfig();
   const [mounted, setMounted] = useState(false);
   // Signing in hands over to the ARVIO auth portal right away: show that,
   // not a Back button that disappears a moment later.

@@ -1,16 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const allowed = new Set(["auth-refresh", "auth-login", "cloud-auth-email"]);
+const allowed = new Set(["auth-refresh", "auth-login", "cloud-auth-email", "cloud-auth-reset"]);
 
 export async function POST(request: NextRequest, context: { params: Promise<{ action: string }> }) {
   const { action } = await context.params;
   if (!allowed.has(action)) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (process.env.NEXT_PUBLIC_SELF_HOSTED === "true") {
-    return NextResponse.json({ error: "This self-hosted installation uses local profiles, not ARVIO Cloud." }, { status: 503 });
+  const selfHosted = process.env.NEXT_PUBLIC_SELF_HOSTED === "true";
+  const privateCloudEnabled = process.env.ARVIO_PRIVATE_CLOUD_ENABLED === "true";
+  if (selfHosted && !privateCloudEnabled) {
+    return NextResponse.json({ error: "This self-hosted installation uses local profiles; private Cloud sync is not enabled." }, { status: 503 });
   }
   const key = process.env.APP_ANON_KEY || process.env.NEXT_PUBLIC_ARVIO_APP_ANON_KEY;
   if (!key) return NextResponse.json({ error: "Cloud authentication is not configured on this server" }, { status: 503 });
-  const base = (process.env.NETLIFY_BACKEND_URL || process.env.NEXT_PUBLIC_NETLIFY_BACKEND_URL || "https://auth.arvio.tv/.netlify/functions").replace(/\/+$/, "");
+  const configuredBase = selfHosted
+    ? process.env.ARVIO_PRIVATE_CLOUD_URL
+    : process.env.NETLIFY_BACKEND_URL || process.env.NEXT_PUBLIC_NETLIFY_BACKEND_URL || "https://auth.arvio.tv/.netlify/functions";
+  if (!configuredBase) return NextResponse.json({ error: "Private Cloud backend URL is not configured" }, { status: 503 });
+  const base = configuredBase.replace(/\/+$/, "");
   const body = await request.text();
   if (body.length > 16_384) return NextResponse.json({ error: "Request too large" }, { status: 413 });
   try {

@@ -15,7 +15,14 @@ export const config = {
   supabaseUrl: selfHosted ? "" : process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
   supabaseAnonKey: selfHosted ? "" : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
   appAnonKey: selfHosted ? "" : envValue(process.env.NEXT_PUBLIC_ARVIO_APP_ANON_KEY, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ""),
-  netlifyBackendUrl: selfHosted ? "" : process.env.NEXT_PUBLIC_NETLIFY_BACKEND_URL ?? process.env.NETLIFY_BACKEND_URL ?? "https://auth.arvio.tv/.netlify/functions",
+  netlifyBackendUrl: selfHosted
+    ? process.env.NEXT_PUBLIC_ARVIO_PRIVATE_CLOUD_URL ?? ""
+    : process.env.NEXT_PUBLIC_NETLIFY_BACKEND_URL ?? process.env.NETLIFY_BACKEND_URL ?? "https://auth.arvio.tv/.netlify/functions",
+  // The private auth portal is a separate origin from the Web app. This is
+  // public routing configuration only; credentials remain server-side.
+  authPortalUrl: selfHosted
+    ? (process.env.NEXT_PUBLIC_ARVIO_AUTH_PORTAL_URL ?? "").replace(/\/+$/, "")
+    : "",
   // Next can evaluate client modules before beforeInteractive scripts execute.
   // Read bootstrap values when used, never freeze an empty module-load snapshot.
   get resolverUrl() { return browserSelfhostRuntimeConfig()?.resolverUrl ?? envValue(process.env.NEXT_PUBLIC_ARVIO_RESOLVER_URL, ""); },
@@ -98,6 +105,12 @@ export function hasNetlifyBackendConfig() {
   return hasNetlifyBackendUrl() && config.appAnonKey.length > 40;
 }
 
+/** Private self-hosted Cloud uses the Web server proxy for auth, so the app
+ * key is intentionally not exposed in the browser bundle. */
+export function hasPrivateCloudConfig() {
+  return config.selfHosted && hasNetlifyBackendUrl() && config.authPortalUrl.startsWith("https://");
+}
+
 export function hasResolverConfig() {
   return config.resolverUrl.startsWith("https://") || config.resolverUrl.startsWith("http://localhost:");
 }
@@ -112,7 +125,7 @@ export function hasSimklConfig() {
 }
 
 export function getAuthPortalUrl(): string {
-  if (config.selfHosted) return "/";
+  if (config.selfHosted) return config.authPortalUrl || "/";
   const backend = config.netlifyBackendUrl;
   try {
     const url = new URL(backend);

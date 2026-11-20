@@ -5,7 +5,7 @@ import { weTrakrClient, type WeTrakrCode } from "@/lib/wetrakr";
 import { mdblistClient } from "@/lib/mdblist";
 import { simklClient } from "@/lib/simkl";
 import { useTranslation } from "@/lib/i18n";
-import { config, getAuthPortalUrl, hasNetlifyBackendConfig, hasSimklConfig, hasSupabaseConfig, hasTraktConfig } from "@/lib/config";
+import { config, getAuthPortalUrl, hasNetlifyBackendConfig, hasPrivateCloudConfig, hasSimklConfig, hasSupabaseConfig, hasTraktConfig } from "@/lib/config";
 import { useApp, useAppPick } from "@/lib/store";
 import { PremiumAccount } from "@/components/shell/PremiumAccount";
 
@@ -31,7 +31,8 @@ export function AccountSection() {
   const translateUi = useTranslation();
   const { auth, signOut, refreshData, settingsSyncState, activeProfile } = useAppPick("auth", "signOut", "refreshData", "settingsSyncState", "activeProfile");
   const [syncBusy, setSyncBusy] = useState(false);
-  const ready = cloudConfigured();
+  const privateCloud = hasPrivateCloudConfig();
+  const ready = cloudConfigured() || privateCloud;
   const signIn = () => {
     const redirectUri = window.location.origin + "/";
     window.location.href = `${getAuthPortalUrl()}?redirect_uri=${encodeURIComponent(redirectUri)}`;
@@ -44,8 +45,8 @@ export function AccountSection() {
   return (
     <>
       <SectionHeader
-        title={config.selfHosted ? "Local account" : "ARVIO account"}
-        description={config.selfHosted
+        title={config.selfHosted ? (privateCloud ? "ARVIO account" : "Local account") : "ARVIO account"}
+        description={config.selfHosted && !privateCloud
           ? "This copy of ARVIO Web keeps profiles and settings in this browser."
           : "Your ARVIO account keeps profiles, settings, addons and progress in sync between ARVIO Web and the Android and TV app."}
       />
@@ -59,7 +60,7 @@ export function AccountSection() {
             </div>
             <button type="button" className="st-btn" onClick={signOut}><LogOut size={16} /> {translateUi("Sign out")}</button>
           </div>
-        ) : config.selfHosted ? (
+        ) : config.selfHosted && !privateCloud ? (
           <Empty>{translateUi("Profiles and settings are saved in this browser. ARVIO Cloud is not connected.")}</Empty>
         ) : (
           <div className="st-account">
@@ -73,7 +74,7 @@ export function AccountSection() {
         )}
       </Group>
 
-      {auth && !config.selfHosted && (
+      {auth && (!config.selfHosted || privateCloud) && (
         <Group
           title="Sync with your Android and TV app"
           description="Settings marked “All devices” or “Android & TV” are saved to your account as you change them. The app picks them up the next time it opens or comes back to the foreground, or straight away from Settings → Sync on the TV."
@@ -94,7 +95,7 @@ export function AccountSection() {
         </Group>
       )}
 
-      {!ready && !config.selfHosted && (
+      {!ready && (!config.selfHosted || privateCloud) && (
         <Group><Empty>{translateUi("ARVIO Cloud backend env is missing. Add backend values in web/.env.local.")}</Empty></Group>
       )}
 
