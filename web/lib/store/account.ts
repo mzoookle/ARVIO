@@ -1,7 +1,6 @@
 // App store (lib/store.tsx): Sign-in / sign-out and the ARVIO auth portal callback (#access_token=...).
 import { useCallback, useEffect } from "react";
 import { SESSION_KEY, decodeJwtPayload } from "../auth";
-import { config } from "../config";
 import { loadStored, saveStored } from "../storage";
 import type { Profile } from "../types";
 import { authClient } from "./clients";
@@ -15,10 +14,6 @@ export function useAuthCallback(store: StoreCore) {
     if (typeof window === "undefined") return;
     const hash = window.location.hash || "";
     if (hash.includes("access_token=") && hash.includes("refresh_token=")) {
-      if (config.selfHosted) {
-        window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
-        return;
-      }
       try {
         const params = new URLSearchParams(hash.replace(/^#/, ""));
         const access_token = params.get("access_token");

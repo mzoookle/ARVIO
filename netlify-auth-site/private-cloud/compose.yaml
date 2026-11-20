@@ -1,0 +1,77 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: arvio_cloud
+      POSTGRES_USER: arvio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a strong POSTGRES_PASSWORD in your environment}
+    volumes:
+      - arvio-cloud-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arvio -d arvio_cloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  arvio-private-cloud:
+    image: local/arvio-private-cloud:0.1.0
+    build:
+      context: ..
+      dockerfile: private-cloud/Dockerfile
+    environment:
+      ARVIO_PRIVATE_CLOUD: "true"
+      ARVIO_ALLOW_SIGNUP: "false"
+      ARVIO_PRIVATE_CLOUD_INTERNAL_URL: http://127.0.0.1:3000
+      DATABASE_URL: postgres://arvio:${POSTGRES_PASSWORD}@db:5432/arvio_cloud
+      ARVIO_AUTH_SECRET: ${ARVIO_AUTH_SECRET:?Set a random ARVIO_AUTH_SECRET of at least 32 characters}
+      ARVIO_BLOB_ENCRYPTION_KEY: ${ARVIO_BLOB_ENCRYPTION_KEY:?Set a 64-character hex encryption key}
+      APP_ANON_KEY: ${APP_ANON_KEY:?Set a random APP_ANON_KEY}
+      ARVIO_DB_POOL_MAX: ${ARVIO_DB_POOL_MAX:-6}
+      DB_POOL_MAX: ${ARVIO_DB_POOL_MAX:-6}
+      ARVIO_MAX_BODY_BYTES: ${ARVIO_MAX_BODY_BYTES:-5242880}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+      TRAKT_CLIENT_ID: ${TRAKT_CLIENT_ID:-}
+      TRAKT_CLIENT_SECRET: ${TRAKT_CLIENT_SECRET:-}
+      SIMKL_CLIENT_ID: ${SIMKL_CLIENT_ID:-}
+      SIMKL_CLIENT_SECRET: ${SIMKL_CLIENT_SECRET:-}
+      AUTH_EMAIL_FROM: "${AUTH_EMAIL_FROM:-ARVIO Private Cloud <noreply@example.net>}"
+      SITE_URL: ${SITE_URL:?Set SITE_URL to the private account portal HTTPS origin}
+      ARVIO_WEB_ORIGIN: ${ARVIO_WEB_ORIGIN:?Set the HTTPS origin of your self-hosted ARVIO Web app}
+      TV_AUTH_VERIFY_BASE_URL: ${TV_AUTH_VERIFY_BASE_URL:-}
+      DISCORD_AUTH_VERIFY_BASE_URL: ${DISCORD_AUTH_VERIFY_BASE_URL:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  arvio-auth-portal:
+    image: local/arvio-auth-portal:0.1.0
+    build:
+      context: ..
+      dockerfile: private-cloud/portal.Dockerfile
+    environment:
+      APP_ANON_KEY: ${APP_ANON_KEY:?Set the same APP_ANON_KEY used by Android and the web server}
+      ARVIO_WEB_ORIGIN: ${ARVIO_WEB_ORIGIN:?Set the HTTPS origin of your self-hosted ARVIO Web app}
+    depends_on:
+      arvio-private-cloud:
+        condition: service_healthy
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  arvio-cloud-db:

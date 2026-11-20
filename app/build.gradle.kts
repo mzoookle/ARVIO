@@ -595,6 +595,7 @@ val validateReleaseCloudSecrets = tasks.register("validateReleaseCloudSecrets") 
     doLast {
         val appAnonKey = localSecretValue("APP_ANON_KEY").ifBlank { localSecretValue("SUPABASE_ANON_KEY") }
         val supabaseUrl = localSecretValue("SUPABASE_URL")
+        val backendUrl = localSecretValue("NETLIFY_BACKEND_URL")
         val traktClientId = localSecretValue("TRAKT_CLIENT_ID")
         val traktClientSecret = localSecretValue("TRAKT_CLIENT_SECRET")
         val telegramApiId = localSecretValue("TELEGRAM_API_ID").toIntOrNull() ?: 0
@@ -608,10 +609,14 @@ val validateReleaseCloudSecrets = tasks.register("validateReleaseCloudSecrets") 
             (supabaseUrl.startsWith("https://") || supabaseUrl.startsWith("http://")) &&
                 supabaseHost.contains('.') &&
                 '*' !in supabaseUrl
-        require(hasValidSupabaseUrl) {
-            "Release builds require a valid HTTP(S) SUPABASE_URL " +
-                "(length=${supabaseUrl.length}, http=${supabaseUrl.startsWith("http")}, " +
-                "hostPresent=${supabaseHost.isNotBlank()}, hostHasDot=${supabaseHost.contains('.')}, redacted=${'*' in supabaseUrl})."
+        val backendHost = backendUrl.substringAfter("://", missingDelimiterValue = "").substringBefore('/')
+        val hasValidBackendUrl =
+            (backendUrl.startsWith("https://") || backendUrl.startsWith("http://")) &&
+                backendHost.contains('.') &&
+                '*' !in backendUrl
+        require(hasValidSupabaseUrl || hasValidBackendUrl) {
+            "Release builds require either a valid HTTP(S) SUPABASE_URL or NETLIFY_BACKEND_URL. " +
+                "A private ARVIO Cloud deployment can use NETLIFY_BACKEND_URL without Supabase Auth."
         }
         require(
             appAnonKey.length > 40 &&

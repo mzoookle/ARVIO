@@ -311,8 +311,9 @@
     </section>
   </main>
 
+  <script src="/portal-config.js"></script>
   <script>
-    const APP_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpyZHd2b3J0Y2Zub3lrbHR6dXFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY3NDU4NzMsImV4cCI6MjA4MjMyMTg3M30.YfKZbSwxGs6_xMd6jkDtn1PKkfuyOHo9qVhUvFRddGU";
+    const APP_ANON_KEY = String(window.ARVIO_APP_ANON_KEY || "");
     const FUNCTIONS = "/.netlify/functions";
 
     const loginStage = document.getElementById("login-stage");

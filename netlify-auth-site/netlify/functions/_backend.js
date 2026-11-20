@@ -1,10 +1,16 @@
 const { Pool } = require("pg");
 const crypto = require("crypto");
-const { connectLambda, getStore } = require("@netlify/blobs");
+const blobStore = process.env.ARVIO_PRIVATE_CLOUD === "true"
+  ? require("../../private-cloud/runtime-store")
+  : require("@netlify/blobs");
+const { connectLambda, getStore } = blobStore;
 
+const PRIVATE_CLOUD_ORIGIN = process.env.ARVIO_WEB_ORIGIN || process.env.SITE_URL || "";
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
-  "access-control-allow-origin": "*",
+  "access-control-allow-origin": process.env.ARVIO_PRIVATE_CLOUD === "true"
+    ? (PRIVATE_CLOUD_ORIGIN || "null")
+    : "*",
   "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
   "access-control-allow-headers": "authorization,apikey,content-type,x-arvio-user-id,x-arvio-email,x-client-info,x-user-token",
   // Per-user responses must never be served from a shared cache: Netlify's
@@ -699,7 +705,15 @@ async function startPasswordSetup(event, email) {
     metadata: { expiresAt }
   });
 
-  const baseUrl = (process.env.SITE_URL || process.env.TV_AUTH_VERIFY_BASE_URL || "https://auth.arvio.tv").replace(/\/+$/, "");
+  const privateCloud = process.env.ARVIO_PRIVATE_CLOUD === "true";
+  const configuredBase = process.env.SITE_URL || process.env.TV_AUTH_VERIFY_BASE_URL ||
+    (privateCloud ? "" : "https://auth.arvio.tv");
+  if (!configuredBase) {
+    const error = new Error("SITE_URL or TV_AUTH_VERIFY_BASE_URL must point to your private ARVIO Web installation");
+    error.statusCode = 503;
+    throw error;
+  }
+  const baseUrl = configuredBase.replace(/\/+$/, "");
   const setupUrl = `${baseUrl}/?mode=set-password&token=${encodeURIComponent(token)}`;
   const emailResult = await sendPasswordSetupEmail(normalizedEmail, setupUrl);
   return {
@@ -1090,6 +1104,9 @@ async function handleCloudAuthEmail(event) {
   const wrongMethod = methodGuard(event, ["POST"]);
   if (wrongMethod) return wrongMethod;
   try {
+    if (process.env.ARVIO_PRIVATE_CLOUD === "true" && process.env.ARVIO_ALLOW_SIGNUP !== "true") {
+      return json(403, { error: "Private Cloud account creation is disabled; ask the administrator." });
+    }
     assertAppRequest(event);
     const body = parseBody(event);
     const email = normalizeEmail(body.email);
@@ -1178,10 +1195,15 @@ async function handleDiscordAuthStart(event) {
       expiresAt
     });
 
-    const verifyBase = (
-      process.env.DISCORD_AUTH_VERIFY_BASE_URL ||
-      "https://auth.arvio.tv"
-    ).replace(/\/+$/, "");
+    const privateCloud = process.env.ARVIO_PRIVATE_CLOUD === "true";
+    const configuredVerifyBase = process.env.DISCORD_AUTH_VERIFY_BASE_URL ||
+      (privateCloud ? process.env.SITE_URL : "https://auth.arvio.tv");
+    if (!configuredVerifyBase) {
+      const error = new Error("DISCORD_AUTH_VERIFY_BASE_URL or SITE_URL must point to your private ARVIO Web installation");
+      error.statusCode = 503;
+      throw error;
+    }
+    const verifyBase = configuredVerifyBase.replace(/\/+$/, "");
     const query = new URLSearchParams({
       session: deviceCode,
       challenge,
@@ -1272,7 +1294,15 @@ async function handleTvAuthStart(event) {
       expiresAt
     };
     await saveTvSession(event, session);
-    const verifyBase = (process.env.TV_AUTH_VERIFY_BASE_URL || process.env.SITE_URL || "https://auth.arvio.tv").replace(/\/+$/, "");
+    const privateCloud = process.env.ARVIO_PRIVATE_CLOUD === "true";
+    const configuredVerifyBase = process.env.TV_AUTH_VERIFY_BASE_URL || process.env.SITE_URL ||
+      (privateCloud ? "" : "https://auth.arvio.tv");
+    if (!configuredVerifyBase) {
+      const error = new Error("TV_AUTH_VERIFY_BASE_URL or SITE_URL must point to your private ARVIO Web installation");
+      error.statusCode = 503;
+      throw error;
+    }
+    const verifyBase = configuredVerifyBase.replace(/\/+$/, "");
     return json(200, {
       device_code: deviceCode,
       user_code: userCode,
@@ -2760,7 +2790,10 @@ async function purgeAccountData(event, email, accountId) {
 }
 
 function functionOrigin(event) {
-  const candidate = event?.rawUrl || process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.SITE_URL;
+  const privateInternal = process.env.ARVIO_PRIVATE_CLOUD === "true"
+    ? process.env.ARVIO_PRIVATE_CLOUD_INTERNAL_URL
+    : "";
+  const candidate = privateInternal || event?.rawUrl || process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.SITE_URL;
   if (!candidate) throw new Error("Function origin is unavailable");
   return new URL(candidate).origin;
 }
