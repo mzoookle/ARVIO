@@ -185,7 +185,7 @@ class IptvSharedLineDeviceTest {
 
         suspend fun usage(): IptvAccountUsage? = withContext(Dispatchers.IO) {
             val request = Request.Builder().url(server.url("/player_api.php")).build()
-            client.newCall(request).execute().use { IptvAccountInfoParser.parseXtreamAvailability(it.body.string()) }
+            client.newCall(request).execute().use { IptvAccountInfoParser.parseXtreamAvailability(it.body?.string()) }
         }
 
         private fun returnFull() = MockResponse().setResponseCode(503)

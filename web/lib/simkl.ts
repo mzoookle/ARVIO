@@ -248,6 +248,30 @@ export class SimklClient implements SyncClient {
   private restorePromise: Promise<void> | null = null;
 
   private async sessionRequest<T>(profile: string, input?: Record<string, unknown>, connection?: string): Promise<T> {
+    if (config.selfHosted) {
+      const { providerCoordinator } = await import("./providerCoordinator");
+      const { authClient } = await import("./store/clients");
+      const marker = (): SimklToken => ({
+        access_token: "simkl_session_cloud_" + (authClient.session?.userId ?? "") + "_" + profile,
+        server_session: true,
+        connection_id: "cloud_" + (authClient.session?.userId ?? "") + "_" + profile
+      });
+      const action = String(input?.action ?? "status");
+      if (action === "status" || action === "migrate") {
+        const status = await providerCoordinator<{ connected: boolean }>("simkl", profile, "status");
+        return { token: status.connected ? marker() : null } as T;
+      }
+      if (action === "start") {
+        const code = await providerCoordinator<{ userCode: string; verificationUrl: string; expiresIn: number; interval: number }>("simkl", profile, "start");
+        return { user_code: code.userCode, verification_url: code.verificationUrl, expires_in: code.expiresIn, interval: code.interval } as T;
+      }
+      if (action === "poll") {
+        const status = await providerCoordinator<{ connected: boolean }>("simkl", profile, "poll");
+        return { token: status.connected ? marker() : null } as T;
+      }
+      if (action === "disconnect") return await providerCoordinator<T>("simkl", profile, "disconnect");
+      throw new Error("Unsupported SIMKL cloud operation.");
+    }
     const response = await fetch("/api/simkl/session", {
       method: input ? "POST" : "GET", credentials: "same-origin", cache: "no-store",
       headers: { "Content-Type": "application/json", "x-simkl-profile": profile, ...(connection ? { "x-simkl-connection": connection } : {}) },
@@ -319,6 +343,15 @@ export class SimklClient implements SyncClient {
       this.token = null;
       return;
     }
+    if (config.selfHosted) {
+      // Browser V2/legacy grants and server-session cookies are no longer the
+      // source of truth. Clear any old device-local grants during cutover.
+      removeStored(this.tokenKey(normalized));
+      removeStored(LEGACY_SIMKL_TOKEN_KEY);
+      removeStored(this.disconnectKey(normalized));
+      this.token = null;
+      return;
+    }
 
     let stored = loadStored<SimklToken | null>(this.tokenKey(normalized), null);
     if (!stored) {
@@ -339,6 +372,11 @@ export class SimklClient implements SyncClient {
   }
 
   setToken(token: SimklToken | null) {
+    if (config.selfHosted && token && (!token.server_session || !token.access_token.startsWith("simkl_session_cloud_"))) {
+      // Never treat credentials from the legacy account snapshot as a current
+      // cloud coordinator connection.
+      return;
+    }
     if (token?.refresh_token || token?.access_token.startsWith("simkl_at_")) throw new Error("SIMKL V2 credentials must remain on the server");
     const next = token?.access_token ? token : null;
     const tokenChanged = (next?.connection_id ?? next?.access_token) !== (this.token?.connection_id ?? this.token?.access_token);
@@ -355,11 +393,23 @@ export class SimklClient implements SyncClient {
     }
     this.token = next;
     if (!this.profileId) return;
-    if (this.token) saveStored(this.tokenKey(this.profileId), this.token);
+    if (this.token && !config.selfHosted) saveStored(this.tokenKey(this.profileId), this.token);
     else removeStored(this.tokenKey(this.profileId));
   }
 
   async disconnect(): Promise<void> {
+    if (config.selfHosted) {
+      const profile = this.profileId;
+      if (!profile) return;
+      await this.sessionRequest(profile, { action: "disconnect" });
+      if (this.profileId === profile) {
+        this.sessionGeneration++;
+        this.restorePromise = null;
+        this.deviceSession = null;
+        this.setToken(null);
+      }
+      return;
+    }
     const profile = this.profileId;
     const old = this.token;
     this.sessionGeneration++;
@@ -376,6 +426,19 @@ export class SimklClient implements SyncClient {
   }
 
   private async simkl<T>(path: string, options: RequestInit = {}, accessToken = this.token?.access_token): Promise<T> {
+    if (config.selfHosted) {
+      const profile = this.profileId;
+      if (!profile || !this.token?.server_session) throw new Error("Connect SIMKL in ARVIO Settings.");
+      const { providerCoordinatorRequest } = await import("./providerCoordinator");
+      const method = (options.method || "GET").toUpperCase();
+      let body: unknown;
+      if (typeof options.body === "string") body = JSON.parse(options.body);
+      else if (options.body != null) throw new Error("SIMKL request must use JSON data.");
+      const scopeBefore = this.scope();
+      const result = await providerCoordinatorRequest<T>("simkl", profile, path, method, body);
+      if (profile !== this.profileId || scopeBefore !== this.scope()) throw new Error("SIMKL profile changed during request.");
+      return result.data;
+    }
     const scope = this.scope();
     if (this.token?.refresh_token) {
       await this.restoreSession();

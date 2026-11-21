@@ -4,9 +4,6 @@ import com.arflix.tv.data.api.SimklApi
 import com.arflix.tv.data.api.SimklPinResponse
 import com.arflix.tv.data.repository.sync.SyncProvider
 import com.arflix.tv.data.repository.sync.SyncProviderStore
-import com.arflix.tv.util.Constants
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -25,8 +22,7 @@ class SimklAuthManager @Inject constructor(
     private val syncProviderStore: SyncProviderStore,
     private val v2: SimklListsRepository? = null
 ) {
-    private val clientId: String get() = Constants.SIMKL_CLIENT_ID
-    val effectiveClientId: String get() = if (isV2Connected()) Constants.SIMKL_V2_CLIENT_ID else clientId
+    val effectiveClientId: String get() = "server-managed"
     fun isV2Connected(): Boolean = v2?.isConnected() == true
     fun cacheIdentity(token: String): String = v2?.connectionId() ?: token
     private var session: SimklListsDeviceCode? = null
@@ -37,16 +33,23 @@ class SimklAuthManager @Inject constructor(
 
 
     suspend fun getAccessToken(): String? {
-        return syncProviderStore.getSimklAccessToken()
+        val coordinator = v2 ?: return null
+        try { coordinator.refreshStatus() }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) { /* Keep the last known connected state during an outage. */ }
+        return if (coordinator.isConnected()) com.arflix.tv.data.repository.simkl.SimklListsRepository.COORDINATOR_TOKEN else null
     }
 
     suspend fun isConnected(): Boolean {
-        val token = getAccessToken()
-        return !token.isNullOrBlank()
+        val coordinator = v2 ?: return false
+        try { coordinator.refreshStatus() }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) { /* Keep the last known connected state during an outage. */ }
+        return coordinator.isConnected()
     }
 
     suspend fun startPinAuth(): SimklPinResponse {
-        if (v2 != null && Constants.SIMKL_V2_CLIENT_ID.isNotBlank()) {
+        if (v2 != null) {
             cancelPinAuth()
             val profile = v2.profileId()
             val code = v2.startDevice()
@@ -57,8 +60,7 @@ class SimklAuthManager @Inject constructor(
             nextPollAt = System.currentTimeMillis() + pollInterval * 1000L
             return SimklPinResponse(code.userCode, code.url, code.expiresIn, code.interval)
         }
-        val effectiveClientId = clientId.ifBlank { "simkl_proxy" }
-        return simklApi.getPinCode(effectiveClientId)
+        throw SimklPinExpiredException("SIMKL cloud coordinator is unavailable")
     }
 
     suspend fun pollPinAuth(userCode: String): Boolean {
@@ -79,18 +81,8 @@ class SimklAuthManager @Inject constructor(
                 }
             }
         }
-        if (Constants.SIMKL_V2_CLIENT_ID.isNotBlank() && v2 != null) throw SimklPinExpiredException("SIMKL sign-in was cancelled")
-        val effectiveClientId = clientId.ifBlank { "simkl_proxy" }
-        val response = simklApi.pollPinToken(userCode, effectiveClientId)
-        if (response.result.equals("OK", ignoreCase = true) && !response.accessToken.isNullOrBlank()) {
-            syncProviderStore.setSimklAccessToken(response.accessToken)
-            syncProviderStore.onProviderConnected(SyncProvider.SIMKL)
-            return true
-        }
-        if (!response.deviceCode.isNullOrBlank()) {
-            throw SimklPinExpiredException("Simkl PIN expired or invalid")
-        }
-        return false
+        if (v2 != null) throw SimklPinExpiredException("SIMKL sign-in was cancelled")
+        throw SimklPinExpiredException("SIMKL sign-in was cancelled")
     }
 
     suspend fun fetchUsername(): String? {

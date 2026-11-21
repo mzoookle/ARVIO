@@ -611,11 +611,8 @@ fun SettingsScreen(
     // Auto-start cloud auth if requested (e.g. from profile selection page)
     LaunchedEffect(autoStartCloudAuth) {
         if (autoStartCloudAuth && !uiState.isLoggedIn) {
-            if (isTouchDevice) {
-                viewModel.openCloudEmailPasswordDialog()
-            } else {
-                viewModel.startCloudAuth()
-            }
+            // Device-code pairing is supported on both mobile and TV.
+            viewModel.startCloudAuth()
         }
     }
 
@@ -2548,13 +2545,7 @@ fun SettingsScreen(
                             isSelfUpdateSupported = uiState.isSelfUpdateSupported,
                             updateStatus = uiState.updateStatus,
                             focusedIndex = if (activeZone == Zone.CONTENT) contentFocusIndex else -1,
-                            onConnectCloud = {
-                                if (isTouchDevice) {
-                                    viewModel.openCloudEmailPasswordDialog()
-                                } else {
-                                    viewModel.startCloudAuth()
-                                }
-                            },
+                            onConnectCloud = { viewModel.startCloudAuth() },
                             onDisconnectCloud = { showCloudDisconnectConfirm = true },
                             onConnectTrakt = { viewModel.startTraktAuth() },
                             onCancelTrakt = { viewModel.cancelTraktAuth() },
@@ -6181,7 +6172,7 @@ private fun MobileCloudAccountSubPage(
                 value = "",
                 isFocused = false,
                 showDivider = false,
-                onClick = { viewModel.openCloudEmailPasswordDialog() }
+                onClick = { viewModel.startCloudAuth() }
             )
         }
     }
@@ -6190,7 +6181,7 @@ private fun MobileCloudAccountSubPage(
         if (uiState.isLoggedIn) {
             action()
         } else {
-            viewModel.openCloudEmailPasswordDialog()
+            viewModel.startCloudAuth()
         }
     }
 

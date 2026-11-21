@@ -69,7 +69,10 @@ class TvDeviceAuthRepository @Inject constructor(
                     val userCode = json.getString("user_code")
                     val verificationUrl = json.optString("verification_url")
                         .ifBlank { json.optString("verification_uri") }
-                        .ifBlank { "https://auth.arvio.tv/?code=${java.net.URLEncoder.encode(userCode, "UTF-8")}" }
+                        .trim()
+                    require(verificationUrl.startsWith("https://") || verificationUrl.startsWith("http://")) {
+                        "Cloud did not supply a valid pairing URL. Check SITE_URL / TV_AUTH_VERIFY_BASE_URL."
+                    }
                     Result.success(TvDeviceAuthSession(
                         userCode = userCode,
                         deviceCode = json.getString("device_code"),

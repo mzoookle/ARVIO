@@ -1293,6 +1293,9 @@ class CloudSyncRepository @Inject constructor(
             while (profileIds.hasNext()) {
                 val profileId = profileIds.next()
                 val remoteSelection = remoteSelections.optJSONObject(profileId) ?: continue
+                // Strip credentials from older snapshots before any merge/copy operation.
+                remoteSelection.remove("simklAccessToken")
+                remoteSelection.remove("simklCredentialUpdatedAt")
                 val localSelection = localSelections.optJSONObject(profileId)
                 if (localSelection == null) {
                     localSelections.put(profileId, JSONObject(remoteSelection.toString()))
@@ -1300,12 +1303,11 @@ class CloudSyncRepository @Inject constructor(
                 }
 
                 mergeTrackingRouting(localSelection, remoteSelection)
-                mergeTrackingCredential(
-                    local = localSelection,
-                    remote = remoteSelection,
-                    credentialField = "simklAccessToken",
-                    timestampField = "simklCredentialUpdatedAt"
-                )
+                // Legacy SIMKL credentials are intentionally not merged into account sync.
+                localSelection.remove("simklAccessToken")
+                localSelection.remove("simklCredentialUpdatedAt")
+                remoteSelection.remove("simklAccessToken")
+                remoteSelection.remove("simklCredentialUpdatedAt")
                 mergeMdbListCredentials(
                     local = localSelection,
                     remote = remoteSelection
@@ -1373,6 +1375,7 @@ class CloudSyncRepository @Inject constructor(
             "watchedReadMode",
             "writeToTrakt",
             "writeToSimkl",
+            "writeToWeTrakr",
             "updatedAt"
         ).forEach { field -> copyOptionalJsonField(local, remote, field) }
     }
@@ -1608,7 +1611,8 @@ class CloudSyncRepository @Inject constructor(
             map.filterValues { selection ->
                 !selection.mdbListApiKey.isNullOrBlank() ||
                     !selection.mdbListAccessToken.isNullOrBlank() ||
-                    !selection.simklAccessToken.isNullOrBlank()
+                    selection.provider == com.arflix.tv.data.repository.sync.SyncProvider.SIMKL ||
+                    selection.provider == com.arflix.tv.data.repository.sync.SyncProvider.WETRAKR
             }.keys.filter { it.isNotBlank() }.toSet()
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
@@ -1990,38 +1994,42 @@ class CloudSyncRepository @Inject constructor(
         }
 
         // ── Addons ──
+        // Web InstalledAddon and Android Addon use different JSON shapes. Decode each
+        // record separately so one legacy/partial manifest cannot cancel the entire restore.
         try {
             val cloudAddonsTs = root.optLong("addonsUpdatedAt", 0L)
             val changeType = object : TypeToken<Map<String, AddonChange>>() {}.type
             val changes: Map<String, AddonChange>? = root.optJSONObject("addonChanges")?.let {
-                gson.fromJson(it.toString(), changeType)
+                runCatching { gson.fromJson<Map<String, AddonChange>>(it.toString(), changeType) }.getOrNull()
             }
-            val cloudMetadataMap = parseAddonMetadataByKey(root)
-            if (cloudMetadataMap.isNotEmpty()) {
-                streamRepository.mergeAddonMetadataCache(cloudMetadataMap)
+            val cloudMetadataMap = runCatching { parseAddonMetadataByKey(root) }.getOrDefault(emptyMap())
+            if (cloudMetadataMap.isNotEmpty()) streamRepository.mergeAddonMetadataCache(cloudMetadataMap)
+
+            val profileMap = root.optJSONObject("addonsByProfile")
+            val listSources = mutableListOf<Any?>()
+            // The top-level list is the shared catalog when the Web app has written it.
+            // Android snapshots may only have per-profile copies, so accept both.
+            root.optJSONArray("addons")?.let(listSources::add)
+            if (profileMap != null) {
+                // Process the active profile first and use deterministic ordering for others.
+                if (profileMap.has(activeProfileId)) listSources.add(profileMap.opt(activeProfileId))
+                profileMap.keys().asSequence().filter { it != activeProfileId }.sorted().forEach {
+                    listSources.add(profileMap.opt(it))
+                }
             }
-            root.optJSONObject("addonsByProfile")?.toString()?.takeIf { it.isNotBlank() }?.let { json ->
-                val type = TypeToken.getParameterized(Map::class.java, String::class.java, TypeToken.getParameterized(List::class.java, Addon::class.java).type).type
-                val map: Map<String, List<Addon>> = gson.fromJson(json, type) ?: emptyMap()
-                val addonType = object : TypeToken<List<Addon>>() {}.type
-                val rootAddons: List<Addon> = root.optJSONArray("addons")?.let {
-                    gson.fromJson(it.toString(), addonType)
-                } ?: emptyList()
-                val sharedAddons = enrichAddonsFromCloudMetadata(
-                    mergeAddonsForSharedRestore(map.values + listOf(rootAddons)),
-                    cloudMetadataMap
-                )
-                streamRepository.applyAddonCloudState(sharedAddons, cloudAddonsTs, changes)
-            }
-            root.optJSONArray("addons")?.toString()?.takeIf { it.isNotBlank() }?.let { json ->
-                if (!root.has("addonsByProfile")) {
-                    val type = TypeToken.getParameterized(List::class.java, Addon::class.java).type
-                    val addons: List<Addon> = gson.fromJson(json, type) ?: emptyList()
-                    streamRepository.applyAddonCloudState(
-                        enrichAddonsFromCloudMetadata(addons, cloudMetadataMap),
-                        cloudAddonsTs,
-                        changes
+            if (listSources.isNotEmpty()) {
+                val decoded = listSources.map { decodeCloudAddonArray(it, gson) }
+                val rejected = decoded.sumOf { it.rejected }
+                // If every supplied record is malformed, preserve working local
+                // installations instead of mistaking a failed parse for "remove all".
+                if (rejected > 0 && decoded.all { it.addons.isEmpty() }) {
+                    Log.w(TAG, "Cloud addon restore skipped: $rejected incompatible records; local addons preserved")
+                } else {
+                    if (rejected > 0) Log.w(TAG, "Cloud addon restore recovered with $rejected incompatible records skipped")
+                    val sharedAddons = enrichAddonsFromCloudMetadata(
+                        mergeAddonsForSharedRestore(decoded.map { it.addons }), cloudMetadataMap
                     )
+                    streamRepository.applyAddonCloudState(sharedAddons, cloudAddonsTs, changes)
                 }
             }
         } catch (e: Exception) {

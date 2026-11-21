@@ -7,7 +7,7 @@ import { useCallback, useEffect } from "react";
 import { shouldRefreshAutomatically } from "../automaticRefresh";
 import { loadLocalAddons, normalizeAddons, saveLocalAddons } from "../addons";
 import { mergeCatalogs } from "../catalogs";
-import { getContinueWatching, pullCloudContinueWatchingDismissals, pullCloudPayload, pullCloudTrackingSelection, pullCloudWatchedKeys, pullCloudWatchlist, saveCloudAddons, saveCloudTrackingSelection } from "../cloud";
+import { getContinueWatching, pullCloudContinueWatchingDismissals, pullCloudPayload, pullCloudTrackingSelection, pullCloudWatchedKeys, pullCloudWatchlist, saveCloudTrackingSelection } from "../cloud";
 import { completionTimes, includeIptvContinueWatching, mergePartialContinueWatching, mergeTrackerContinueWatching, pruneCompletedResume } from "../continueWatching";
 import { episodeAvailabilityKey } from "../episodeAvailability";
 import { savePlaylists } from "../iptv";
@@ -16,6 +16,7 @@ import { removeStored } from "../storage";
 import { flushSettingsOutbox, hasPendingSettings, settingsWithPendingEdits } from "../settingsOutbox";
 import { continueWatchingActivitySignature, createTraktActivityCheck } from "../traktActivity";
 import { mdblistClient } from "../mdblist";
+import { config } from "../config";
 import { simklClient } from "../simkl";
 import { defaultTrackingPreferences, loadTrackingPreferences, readsFrom, sameTrackingSources, saveTrackingPreferences, syncClient } from "../sync";
 import type { MediaItem } from "../types";
@@ -113,7 +114,7 @@ export function useRefreshData(store: StoreCore) {
             }
           } else {
             traktClient.setToken(cloudTracking.traktToken);
-            if (!simklClient.isV2Connected) simklClient.setToken(cloudTracking.simklToken);
+            if (!config.selfHosted && !simklClient.isV2Connected) simklClient.setToken(cloudTracking.simklToken);
             mdblistClient.setKey(cloudTracking.mdbListApiKey);
             if (cloudTracking.mdbListAccessToken) {
               mdblistClient.setToken({
@@ -178,7 +179,6 @@ export function useRefreshData(store: StoreCore) {
       // If the pull explicitly returned an EMPTY cloud list but we still hold
       // addons locally, the cloud is stale/partial — self-heal by pushing our
       // list back up instead of wiping.
-      const cloudReturnedEmpty = cloud !== null && cloudAddons.length === 0;
       const addonState = source.map((addon) => ({
         ...addon,
         enabled: !effectiveSettings.disabledAddonIds.includes(addon.id) && addon.enabled !== false
@@ -188,9 +188,6 @@ export function useRefreshData(store: StoreCore) {
       // Only persist locally when we actually have addons — an empty list can't
       // overwrite a good one.
       if (addonState.length) saveLocalAddons(addonState);
-      if (cloudReturnedEmpty && source.length && authClient.session && !hasPendingAddons(authClient)) {
-        void saveCloudAddons(authClient, source, profileId).catch(() => undefined);
-      }
 
       effectiveSettings = managed.applySettings(effectiveSettings);
       const effectiveCatalogs = mergeCatalogs(effectiveSettings.catalogs, effectiveSettings.hiddenCatalogIds, effectiveSettings.hiddenAddonCatalogIds);

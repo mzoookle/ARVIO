@@ -599,7 +599,7 @@ class SettingsViewModel @Inject constructor(
     private fun trailerInCardsKey() = profileManager.profileBooleanKey("trailer_in_cards")
     private fun netflixHomeStyleKey() = profileManager.profileBooleanKey(com.arflix.tv.ui.screens.home.NETFLIX_HOME_STYLE_KEY)
     private fun watchlistOnHomeKey() = profileManager.profileBooleanKey(com.arflix.tv.util.WATCHLIST_ON_HOME)
-    private fun comingUpOnHomeKey() = profileManager.profileBooleanKey(com.arflix.tv.ui.screens.home.COMING_UP_ON_HOME)
+    private fun comingUpOnHomeKey() = profileManager.profileBooleanKey("coming_up_on_home")
     private fun showBudgetKey() = profileManager.profileBooleanKey("show_budget_on_home")
     private fun showEpisodeRatingsKey() = profileManager.profileBooleanKey("show_episode_ratings")
     private fun animeStructuringStyleKey() = profileManager.profileStringKey(AnimeStructuringStyle.PREFERENCE_KEY)
@@ -977,6 +977,10 @@ class SettingsViewModel @Inject constructor(
             val isTrakt = traktRepository.hasTrakt()
             val isMdbList = mdbListRepository.isConnected()
             val isSimkl = simklAuthManager.isConnected()
+            try { weTrakr.refreshStatus(loadProfileId) }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { /* Preserve the last known provider status. */ }
+            val isWeTrakr = weTrakr.isConnected(loadProfileId)
             val trackingPreferences = syncProviderStore.getTrackingPreferences()
 
             if (profileManager.getProfileIdSync() != loadProfileId) return@launch
@@ -1066,7 +1070,7 @@ class SettingsViewModel @Inject constructor(
                 mdbListCode = null,
                 mdbListUrl = null,
                 mdbListUsername = null,
-                isWeTrakrConnected = weTrakr.isConnected(),
+                isWeTrakrConnected = isWeTrakr,
                 weTrakrBusy = false, weTrakrCode = null,
                 isSimklConnected = isSimkl,
                 simklUsername = null,

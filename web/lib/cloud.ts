@@ -958,7 +958,11 @@ export async function pullCloudPayload(auth: AuthClient, profileId?: string | nu
       .filter((repo) => repo.id);
   }
   const enrichedAddons = enrichAddonsWithMetadataCache(
-    unionAddons(arrayValue<InstalledAddon>(profileAddons), arrayValue<InstalledAddon>(root.addons)),
+    unionAddons(arrayValue<InstalledAddon>(profileAddons), arrayValue<InstalledAddon>(root.addons)).map(addon => ({
+      ...addon,
+      manifestUrl: cloudManifestUrl(addon),
+      enabled: addon.enabled !== false && (addon as InstalledAddon & { isEnabled?: boolean }).isEnabled !== false
+    })),
     objectRecord<Record<string, unknown>>(root.addonMetadataByKey)
   );
   if (Array.isArray(catalogSettings.catalogs) && enrichedAddons.length > 0) {
@@ -1031,14 +1035,21 @@ function mergeCatalogEntries(primary: unknown, fallback: unknown, allowClear: bo
   });
 }
 
+function cloudManifestUrl(addon: InstalledAddon): string {
+  const compatible = addon as InstalledAddon & { url?: string; transportUrl?: string };
+  const raw = compatible.manifestUrl || compatible.url || compatible.transportUrl || "";
+  if (!raw) return "";
+  return /\/manifest\.json(?:\?.*)?$/i.test(raw) ? raw : `${raw.replace(/\/+$/, "")}/manifest.json`;
+}
+
 function mergeAddonPair(preferred: InstalledAddon, fallback: InstalledAddon): InstalledAddon {
   const pSetup = Number(preferred.setupUpdatedAt ?? 0) || 0;
   const fSetup = Number(fallback.setupUpdatedAt ?? 0) || 0;
   const setupWinner = fSetup > pSetup ? fallback : preferred;
   const setupOther = setupWinner === preferred ? fallback : preferred;
 
-  const winnerUrl = setupWinner.manifestUrl;
-  const otherUrl = setupOther.manifestUrl;
+  const winnerUrl = cloudManifestUrl(setupWinner);
+  const otherUrl = cloudManifestUrl(setupOther);
   const keepConfiguredUrl = isConfiguredAddonUrl(otherUrl) && !isConfiguredAddonUrl(winnerUrl) &&
     Number(setupWinner.setupUpdatedAt ?? 0) <= Number(setupOther.setupUpdatedAt ?? 0);
 
@@ -1063,6 +1074,7 @@ function mergeAddonPair(preferred: InstalledAddon, fallback: InstalledAddon): In
     ...setupOther,
     ...setupWinner,
     manifestUrl: keepConfiguredUrl ? otherUrl : winnerUrl,
+    url: (setupWinner as InstalledAddon & { url?: string }).url || (setupOther as InstalledAddon & { url?: string }).url || (keepConfiguredUrl ? otherUrl : winnerUrl),
     ...(keepConfiguredUrl ? { url: otherUrl, transportUrl: otherUrl.replace(/\/manifest\.json$/, "") } : {}),
     version: metaWinner.version || metaOther.version,
     description: metaWinner.description ?? metaOther.description,
@@ -1113,13 +1125,13 @@ function unionAddons(primary: InstalledAddon[], existing: unknown): InstalledAdd
   const indexByUrl = new Map<string, number>();
   for (const addon of [...primary, ...arrayValue<InstalledAddon>(existing)]) {
     if (!addon || (!addon.id && !addon.manifestUrl)) continue;
-    const urlKey = normalizeAddonUrlKey(addon.manifestUrl);
+    const urlKey = normalizeAddonUrlKey(cloudManifestUrl(addon));
     let idx = addon.id ? indexById.get(addon.id) : undefined;
     if (idx === undefined && urlKey) idx = indexByUrl.get(urlKey);
     if (idx !== undefined) {
       result[idx] = mergeAddonPair(result[idx], addon);
       if (result[idx].id) indexById.set(result[idx].id, idx);
-      const mergedUrlKey = normalizeAddonUrlKey(result[idx].manifestUrl);
+      const mergedUrlKey = normalizeAddonUrlKey(cloudManifestUrl(result[idx]));
       if (mergedUrlKey) indexByUrl.set(mergedUrlKey, idx);
     } else {
       const nextIdx = result.length;

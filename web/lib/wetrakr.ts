@@ -1,4 +1,5 @@
 import type { SyncClient, SyncMediaRef } from "./sync";
+import { config } from "./config";
 
 type Row = Record<string, any>;
 type Marker = { connection_id: string; server_session: true };
@@ -42,6 +43,13 @@ export class WeTrakrClient implements SyncClient {
     if (!profile) throw new Error("Choose an ARVIO profile first.");
     if (Date.now() < this.blockedUntil) throw new Error("WeTrakr is limiting requests. Please try again later.");
     const connection = this.marker?.connection_id;
+    if (config.selfHosted) {
+      if (!this.marker) throw new Error("Connect WeTrakr in ARVIO Settings.");
+      const { providerCoordinatorRequest } = await import("./providerCoordinator");
+      const { data, headers } = await providerCoordinatorRequest<Row>("wetrakr", profile, `/${path}`, method, body);
+      if (profile !== this.profile || connection !== this.marker?.connection_id) throw new Error("The active connection changed.");
+      return { data, response: { headers } };
+    }
     const response = await fetch(`/api/wetrakr/${path}`, { method, credentials: "same-origin", cache: "no-store",
       headers: { "Content-Type": "application/json", "x-wetrakr-profile": profile, "x-wetrakr-connection": this.marker?.connection_id || "" },
       body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30000) });
@@ -55,18 +63,54 @@ export class WeTrakrClient implements SyncClient {
     if (profile !== this.profile || path !== "session" && connection !== this.marker?.connection_id) throw new Error("The active connection changed.");
     return { data, response };
   }
-  async restoreSession() { const { data } = await this.call("session"); this.marker = data.token || null; }
+  async restoreSession() {
+    if (config.selfHosted) {
+      const profile = this.profile;
+      if (!profile) return;
+      const { providerCoordinator } = await import("./providerCoordinator");
+      const status = await providerCoordinator<{ connected: boolean }>("wetrakr", profile, "status");
+      if (profile === this.profile) this.marker = status.connected ? { connection_id: "cloud", server_session: true } : null;
+      return;
+    }
+    const { data } = await this.call("session"); this.marker = data.token || null;
+  }
   async begin(): Promise<WeTrakrCode> {
+    if (config.selfHosted) {
+      if (!this.profile) throw new Error("Choose an ARVIO profile first.");
+      const { providerCoordinator } = await import("./providerCoordinator");
+      const data = await providerCoordinator<{ userCode: string; verificationUrl: string; expiresIn: number; interval: number }>("wetrakr", this.profile, "start");
+      return { user_code: data.userCode, verification_url: data.verificationUrl, expires_in: data.expiresIn,
+        interval: data.interval, expiresAt: Date.now() + data.expiresIn * 1000 };
+    }
     const { data } = await this.call("session", "POST", { action: "start" });
     return { ...data, expiresAt: Date.now() + data.expires_in * 1000 };
   }
   async poll(code: WeTrakrCode) {
     if (Date.now() >= code.expiresAt) throw new Error("The WeTrakr code expired. Request a new code.");
+    if (config.selfHosted) {
+      const profile = this.profile;
+      if (!profile) return false;
+      const { providerCoordinator } = await import("./providerCoordinator");
+      const data = await providerCoordinator<{ connected: boolean }>("wetrakr", profile, "poll");
+      if (profile !== this.profile) return false;
+      if (data.connected) { this.marker = { connection_id: "cloud", server_session: true }; this.cache.clear(); return true; }
+      return false;
+    }
     const { data } = await this.call("session", "POST", { action: "poll", user_code: code.user_code });
     if (data.token) { this.marker = data.token; this.cache.clear(); return true; }
     return false;
   }
-  async disconnect() { await this.call("session", "POST", { action: "disconnect" }); this.marker = null; this.cache.clear(); }
+  async disconnect() {
+    if (config.selfHosted) {
+      const profile = this.profile;
+      if (!profile) return;
+      const { providerCoordinator } = await import("./providerCoordinator");
+      await providerCoordinator("wetrakr", profile, "disconnect");
+      if (profile === this.profile) { this.marker = null; this.cache.clear(); }
+      return;
+    }
+    await this.call("session", "POST", { action: "disconnect" }); this.marker = null; this.cache.clear();
+  }
   private async list(status: string, target: string) {
     const profile = this.profile;
     const key = `${profile}:${status}:${target}`;

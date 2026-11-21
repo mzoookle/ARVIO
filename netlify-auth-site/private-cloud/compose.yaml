@@ -23,6 +23,9 @@ services:
       ARVIO_PRIVATE_CLOUD: "true"
       ARVIO_ALLOW_SIGNUP: "false"
       ARVIO_PRIVATE_CLOUD_INTERNAL_URL: http://127.0.0.1:3000
+      ARVIO_CREDENTIAL_ENCRYPTION_KEY: ${ARVIO_CREDENTIAL_ENCRYPTION_KEY:?set_a_base64_32_byte_key}
+      SIMKL_V2_CLIENT_ID: ${SIMKL_V2_CLIENT_ID:?set_simkl_v2_client_id}
+      WETRAKR_CLIENT_ID: ${WETRAKR_CLIENT_ID:?set_wetrakr_client_id}
       DATABASE_URL: postgres://arvio:${POSTGRES_PASSWORD}@db:5432/arvio_cloud
       ARVIO_AUTH_SECRET: ${ARVIO_AUTH_SECRET:?Set a random ARVIO_AUTH_SECRET of at least 32 characters}
       ARVIO_BLOB_ENCRYPTION_KEY: ${ARVIO_BLOB_ENCRYPTION_KEY:?Set a 64-character hex encryption key}

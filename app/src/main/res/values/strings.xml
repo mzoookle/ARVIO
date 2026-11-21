@@ -467,6 +467,7 @@
     <string name="settings_cloud_pairing_title">ARVIO Cloud Pairing</string>
     <string name="settings_pair_signin_link_device">Sign in with your email and password to link this device.</string>
     <string name="settings_pair_scan_qr_link_tv">Scan this QR code to sign in and link this TV.</string>
+    <string name="settings_pair_scan_qr_link_device">Scan with another device to sign in and link ARVIO.</string>
     <string name="settings_pair_code">Code: %1$s</string>
     <string name="settings_waiting_for_approval">Waiting for approval...</string>
     <string name="settings_use_email_password">Use Email &amp; Password</string>

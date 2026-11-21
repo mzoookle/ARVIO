@@ -24,7 +24,7 @@
       <h1>Administrator sign in</h1>
       <p class="muted">Sign in with an account authorized by the Keycloak <code>/arvio</code> group or the server's administrator email allowlist.</p>
       <div class="status" id="oidcStatus" role="status"></div>
-      <button class="primary" id="keycloakLogin" type="button" style="width:100%;margin-bottom:16px">Sign in with SSO</button>
+      <button class="primary" id="keycloakLogin" type="button" style="width:100%;margin-bottom:16px">Sign in with Keycloak</button>
       <div class="muted" style="text-align:center;margin:8px 0">or use an ARVIO account</div>
       <form id="loginForm"><label for="email">Email</label><input id="email" type="email" autocomplete="username" required /><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required /><div class="status" id="loginStatus" role="status"></div><button class="primary" type="submit" style="width:100%">Sign in</button></form>
     </section>
@@ -57,7 +57,6 @@
   const ANON = String(window.ARVIO_APP_ANON_KEY || "");
   const $ = (id) => document.getElementById(id);
   let token = "";
-  let currentAdminEmail = "";
   let users = [];
   let selectedEmail = "";
   let configProfiles = [];
@@ -103,12 +102,7 @@
       const actions=document.createElement("td"); actions.className="actions";
       const view=document.createElement("button"); view.textContent="View"; view.addEventListener("click",()=>openUser(user.email));
       const reset=document.createElement("button"); reset.className="danger"; reset.textContent="Reset password"; reset.addEventListener("click",()=>resetPassword(user.email));
-      const remove=document.createElement("button"); remove.className="danger"; remove.textContent="Delete account";
-      const isCurrentAdmin = user.email.toLowerCase() === currentAdminEmail;
-      remove.disabled = isCurrentAdmin;
-      remove.title = isCurrentAdmin ? "You cannot delete the account currently signed in to the admin dashboard." : "Permanently delete this account and its data";
-      remove.addEventListener("click",()=>deleteAccount(user.email));
-      actions.append(view,reset,remove); tr.append(email,created,status,oidc,actions); $("usersBody").append(tr);
+      actions.append(view,reset); tr.append(email,created,status,oidc,actions); $("usersBody").append(tr);
     }
     if(!visible.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=5;td.textContent="No matching users.";td.className="muted";tr.append(td);$("usersBody").append(tr);}
   }
@@ -118,7 +112,7 @@
     iptv: { label: "IPTV providers & playlists", help: "Playlist URLs, EPGs, Stalker portals, favorites, hidden groups, ordering, and related IPTV state for this profile." },
     catalogs: { label: "Catalogs & visibility", help: "Catalog definitions and per-profile hidden catalog ID lists." },
     globalSettings: { label: "Account-wide preferences", help: "These settings are account-wide rather than profile-specific. Only the supported top-level ARVIO global settings are editable here." },
-    integrations: { label: "Tracking integrations", help: "Trakt, SIMKL, and MDBList credentials and routing preferences for this profile. Values are sensitive; never paste this JSON into a public issue or chat." }
+    integrations: { label: "Tracking integrations", help: "Connection status for Trakt, SIMKL, WeTrakr, and MDBList plus profile tracking preferences. Provider credentials are deliberately hidden and cannot be edited here." }
   };
   function currentConfigValue() {
     return configData?.config?.[$("configSection").value] ?? {};
@@ -165,37 +159,6 @@
     try { const result=await request("admin-password-reset",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email})}); $("temporaryPassword").textContent=result.temporaryPassword; $("resetResult").classList.remove("hidden"); $("resetResult").scrollIntoView({behavior:"smooth",block:"start"}); }
     catch(error){setStatus("listStatus",error.message,"error");}
   }
-  async function deleteAccount(email) {
-    if (email.toLowerCase() === currentAdminEmail) {
-      setStatus("listStatus", "You cannot delete the account currently signed in to the admin dashboard.", "error");
-      return;
-    }
-    const accepted = confirm(`PERMANENTLY DELETE ${email}?\n\nThis removes the ARVIO account, synced profiles/settings, linked Keycloak identity, refresh sessions, TV sessions, and associated private-cloud records. This cannot be undone.`);
-    if (!accepted) return;
-    const typed = prompt(`To confirm permanent deletion, type this exact email address:\n\n${email}`);
-    if (typed !== email) {
-      if (typed !== null) setStatus("listStatus", "Email confirmation did not match. Nothing was deleted.", "error");
-      return;
-    }
-    setStatus("listStatus", `Queuing permanent deletion for ${email}…`);
-    try {
-      const result = await request("admin-account-delete", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, confirmation: typed })
-      });
-      if (result.audit_warning) {
-        setStatus("listStatus", `Deletion queued for ${email}, but the audit log write reported a problem. Check API logs.`, "error");
-      } else {
-        setStatus("listStatus", `Deletion queued for ${email}. Access is being revoked and account data is being purged.`, "success");
-      }
-      if (selectedEmail === email) { selectedEmail = ""; $("userDetail").classList.add("hidden"); }
-      await loadUsers();
-    } catch (error) {
-      setStatus("listStatus", error.message === "cannot_delete_current_admin_account"
-        ? "You cannot delete the account currently signed in to the admin dashboard."
-        : error.message, "error");
-    }
-  }
   $("keycloakLogin").addEventListener("click",async()=>{
     setStatus("oidcStatus","Redirecting to Keycloak…");
     try {
@@ -221,10 +184,10 @@
   }
   $("loginForm").addEventListener("submit",async(event)=>{
     event.preventDefault(); setStatus("loginStatus","Signing in…");
-    try { const response=await fetch(`${API}/auth-login`,{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:`Bearer ${ANON}`},body:JSON.stringify({email:$('email').value,password:$('password').value})}); const data=await response.json().catch(()=>({})); if(!response.ok)throw new Error(data.error||"Sign in failed"); token=data.access_token||""; if(!token)throw new Error("Sign-in response did not include an access token."); currentAdminEmail = $('email').value.trim().toLowerCase(); $("adminIdentity").textContent=`Signed in as ${currentAdminEmail}`; await loadUsers(); showDashboard(); }
+    try { const response=await fetch(`${API}/auth-login`,{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:`Bearer ${ANON}`},body:JSON.stringify({email:$('email').value,password:$('password').value})}); const data=await response.json().catch(()=>({})); if(!response.ok)throw new Error(data.error||"Sign in failed"); token=data.access_token||""; if(!token)throw new Error("Sign-in response did not include an access token."); $("adminIdentity").textContent=`Signed in as ${$('email').value.trim().toLowerCase()}`; await loadUsers(); showDashboard(); }
     catch(error){token="";showLogin();setStatus("loginStatus",error.message,"error");}
   });
-  $("logout").addEventListener("click",()=>{token="";currentAdminEmail="";users=[];showLogin();$("password").value="";setStatus("loginStatus","Signed out.");setStatus("oidcStatus","Signed out.");});
+  $("logout").addEventListener("click",()=>{token="";users=[];showLogin();$("password").value="";setStatus("loginStatus","Signed out.");setStatus("oidcStatus","Signed out.");});
   $("refresh").addEventListener("click",()=>loadUsers().catch(error=>setStatus("listStatus",error.message,"error")));
   $("search").addEventListener("input",renderUsers);
   $("closeDetail").addEventListener("click",()=>$("userDetail").classList.add("hidden"));

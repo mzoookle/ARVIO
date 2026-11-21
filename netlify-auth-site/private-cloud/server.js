@@ -13,9 +13,9 @@ const ROUTES = new Set([
   "tv-auth-start", "tv-auth-status", "tv-auth-poll", "tv-auth-complete", "tv-auth-approve", "tv-auth-web",
   "discord-auth-start", "discord-auth-status", "discord-auth-callback",
   "app-usage-event",
-  "admin-users", "admin-user", "admin-password-reset", "admin-profile-config", "admin-account-delete",
+    "admin-users", "admin-user", "admin-password-reset", "admin-profile-config", "admin-account-delete",
   "oidc-start", "oidc-callback", "oidc-link-start", "auth-password-set",
-  "simkl-proxy", "trakt-proxy", "tmdb-proxy"
+  "simkl-proxy", "trakt-proxy", "tmdb-proxy", "provider-coordinator"
 ]);
 const MAX_BODY_BYTES = Number(process.env.ARVIO_MAX_BODY_BYTES || 5 * 1024 * 1024);
 

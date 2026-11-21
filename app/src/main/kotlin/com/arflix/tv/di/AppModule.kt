@@ -120,59 +120,13 @@ object AppModule {
     @Singleton
     @JvmStatic
     fun provideSimklApi(
-        okHttpClient: OkHttpClient,
-        simklV2: com.arflix.tv.data.repository.simkl.SimklListsRepository,
-        @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context
+        coordinator: com.arflix.tv.data.repository.provider.ProviderCoordinatorClient
     ): com.arflix.tv.data.api.SimklApi {
-        val simklClient = okHttpClient.newBuilder()
-            .addInterceptor { chain ->
-                val original = chain.request()
-                val token = original.header("Authorization")?.removePrefix("Bearer ")
-                if (token?.startsWith("simkl_at_") != true) return@addInterceptor chain.proceed(original)
-                val profile = simklV2.profileId()
-                val connection = simklV2.connectionId()
-                val ownsToken = simklV2.ownsAccessToken(token)
-                val response = chain.proceed(original)
-                if (response.code != 401 || !ownsToken) return@addInterceptor response
-                response.close()
-                val refreshed = kotlinx.coroutines.runBlocking { simklV2.refreshRejectedToken(token, profile, connection) }
-                chain.proceed(original.newBuilder().header("Authorization", "Bearer $refreshed").build())
-            }
-            .addInterceptor { chain ->
-                val original = chain.request()
-
-                val originalUrl = original.url
-                val urlBuilder = originalUrl.newBuilder()
-                val rawVersion = com.arflix.tv.BuildConfig.VERSION_NAME
-                val cleanVersion = rawVersion.substringBefore("-")
-
-                val clientId = if (original.header("Authorization")?.startsWith("Bearer simkl_at_") == true)
-                    Constants.SIMKL_V2_CLIENT_ID else Constants.SIMKL_CLIENT_ID
-                if (clientId.isNotBlank()) {
-                    urlBuilder.setQueryParameter("client_id", clientId)
-                }
-                urlBuilder.setQueryParameter("app-name", "arvio")
-                urlBuilder.setQueryParameter("app-version", cleanVersion)
-
-                val requestBuilder = original.newBuilder()
-                    .url(urlBuilder.build())
-                    .header("User-Agent", OkHttpProvider.getAppUserAgent(context))
-
-                if (clientId.isNotBlank()) {
-                    requestBuilder.header("simkl-api-key", clientId)
-                }
-
-                if (original.method.equals("POST", ignoreCase = true) && original.header("Content-Type") == null) {
-                    requestBuilder.header("Content-Type", "application/json")
-                }
-
-
-                val response = chain.proceed(requestBuilder.build())
-                if (response.code == 412) {
-                    com.arflix.tv.util.AppLogger.e("SimklApi", "HTTP 412 Precondition Failed / client_id_failed from Simkl. Check API key.")
-                }
-                response
-            }
+        // Deliberately do not reuse OkHttpProvider.client here: its general API proxy interceptor
+        // can reroute SIMKL requests before this account-scoped coordinator sees them.
+        val simklClient = OkHttpClient.Builder()
+            .callTimeout(35, java.util.concurrent.TimeUnit.SECONDS)
+            .addInterceptor { chain -> coordinator.executeProviderRequestBlocking(chain.request()) }
             .addInterceptor(simklRateLimiter)
             .build()
 

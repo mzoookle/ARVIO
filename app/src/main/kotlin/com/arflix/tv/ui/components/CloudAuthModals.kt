@@ -400,7 +400,7 @@ fun CloudEmailPasswordModal(
 
 /**
  * ARVIO Cloud device pairing modal (QR Code & verification code).
- * Shows QR code on TV devices, and user code for web activation at auth.arvio.tv.
+ * Shows the server-provided QR pairing URL on TV and touchscreen devices.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -411,13 +411,9 @@ fun CloudPairModal(
     onDismiss: () -> Unit,
     onUseEmailPassword: () -> Unit,
 ) {
-    val effectiveVerificationUrl = remember(verificationUrl, userCode) {
-        verificationUrl.ifBlank {
-            userCode.takeIf { it.isNotBlank() }?.let { code ->
-                "https://auth.arvio.tv/?code=$code"
-            }.orEmpty()
-        }
-    }
+    // Use the URL supplied by the selected cloud (including private-cloud installs).
+    // Never silently send private-cloud pairings to the public ARVIO portal.
+    val effectiveVerificationUrl = verificationUrl.trim()
     // Focus order: 0 cancel, 1 email/password
     var focusedIndex by remember { mutableIntStateOf(1) }
     val modalFocusRequester = remember { FocusRequester() }
@@ -488,7 +484,7 @@ fun CloudPairModal(
 
                     if (isMobile) {
                         Text(
-                            text = stringResource(R.string.settings_pair_signin_link_device),
+                            text = stringResource(R.string.settings_pair_scan_qr_link_device),
                             style = ArflixTypography.body,
                             color = TextSecondary,
                             textAlign = TextAlign.Center,
@@ -504,8 +500,8 @@ fun CloudPairModal(
                         )
                     }
 
-                    // QR code section - only shown on TV (phones can't scan their own screen)
-                    if (!isMobile && effectiveVerificationUrl.isNotBlank()) {
+                    // Also show QR on touchscreen devices; it can be scanned by another device.
+                    if (effectiveVerificationUrl.isNotBlank()) {
                         Box(
                             modifier = Modifier
                                 .size(qrContainerSize)

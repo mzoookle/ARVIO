@@ -11,29 +11,15 @@ import androidx.test.platform.app.InstrumentationRegistry
 import coil.ImageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
+import com.arflix.tv.ArflixApplication
 import com.arflix.tv.data.model.CatalogDiscoveryResult
 import com.arflix.tv.data.model.CatalogSourceType
-import com.arflix.tv.data.repository.ProfileManager
-import com.arflix.tv.data.repository.CatalogRepository
-import com.arflix.tv.data.repository.MediaRepository
+import com.arflix.tv.data.repository.provider.ProviderCoordinatorClient
 import com.arflix.tv.data.repository.simkl.SimklListsRepository
-import com.arflix.tv.di.RepositoryAccessEntryPoint
-import com.arflix.tv.util.SecureStorage
-import dagger.hilt.android.EntryPointAccessors
-import io.mockk.coEvery
-import io.mockk.every
-import io.mockk.mockk
-import com.arflix.tv.data.repository.simkl.SimklListsClient
-import com.arflix.tv.data.repository.simkl.SimklListsGrant
-import com.arflix.tv.util.Constants
 import com.arflix.tv.util.DeviceType
 import com.arflix.tv.util.LocalDeviceType
-import com.google.gson.Gson
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
-import com.arflix.tv.data.repository.simkl.SimklAuthManager
-import com.arflix.tv.data.repository.sync.SyncProviderStore
-import okhttp3.OkHttpClient
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -41,59 +27,42 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 
-/** Opt-in read-only live check. Test credentials are never checked in or printed. */
+/**
+ * Optional live coordinator tests. Unlike the retired device-token tests these
+ * use the signed-in ARVIO account and never read/write local SIMKL grants.
+ *
+ * simklLive=true: read-only list and UI check; SIMKL must already be connected.
+ * simklDeviceAuth=true: manual PIN flow; changes the current account's connection.
+ */
 @RunWith(AndroidJUnit4::class)
 class SimklCatalogDeviceTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
+    private fun liveRepository(): SimklListsRepository {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val app = context.applicationContext as ArflixApplication
+        val coordinator = ProviderCoordinatorClient(app.authRepository, app.profileManager)
+        return SimklListsRepository(app.profileManager, coordinator)
+    }
+
     @Test fun liveSimklListSearchRendersRealArtAndTvActions(): Unit = runBlocking {
         assumeTrue(InstrumentationRegistry.getArguments().getString("simklLive") == "true")
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val grant = Gson().fromJson(File(context.filesDir, "simkl-test-grant.json").readText(), SimklListsGrant::class.java)
-        val profile = mockk<ProfileManager>(relaxed = true)
-        every { profile.getProfileIdSync() } returns "simkl-emulator-qa"
-        coEvery { profile.getProfileId() } returns "simkl-emulator-qa"
-        val prefs = context.getSharedPreferences("simkl_lists_v2", android.content.Context.MODE_PRIVATE)
-        prefs.edit().putString("grant_simkl-emulator-qa", SecureStorage.encrypt(Gson().toJson(grant.copy(expiresAt = 0)), "arvio_simkl_lists_v2")).commit()
-        val listsRepository = SimklListsRepository(context, profile)
-        val catalogs = CatalogRepository(context, profile, mockk(relaxed = true), OkHttpClient(), mockk(relaxed = true), listsRepository)
-        val tmdb = EntryPointAccessors.fromApplication(context, RepositoryAccessEntryPoint::class.java).tmdbApi()
-        val media = MediaRepository(context, tmdb, mockk(relaxed = true), mockk(relaxed = true), OkHttpClient(),
-            mockk(relaxed = true), mockk(relaxed = true), listsRepository)
-        val saved = catalogs.addCustomCatalog("https://simkl.com/5/list/14462/best-mindfucks-tv-shows").getOrThrow()
-        try {
-        val refreshedToken = listsRepository.accessToken()
-        File(context.filesDir, "simkl-test-grant.json").writeText(SecureStorage.decrypt(prefs.getString("grant_simkl-emulator-qa", null), "arvio_simkl_lists_v2")!!)
-        assertNotEquals(grant.accessToken, refreshedToken)
-        assertEquals(grant.connectionId, listsRepository.connectionId())
-        assertEquals(refreshedToken, SimklListsRepository(context, profile).accessToken())
-        assertEquals(CatalogSourceType.SIMKL, saved.sourceType)
-        assertEquals("simkl_list:14462", saved.sourceRef)
-        assertTrue(catalogs.getCatalogs().any { it.id == saved.id })
-        assertTrue(catalogs.addCustomCatalog("https://simkl.com/lists/14462").isFailure)
-        val first = media.loadCustomCatalogPage(saved, 0, 4)
-        val next = media.loadCustomCatalogPage(saved, 4, 4)
-        assertEquals(4, first.items.size)
-        assertEquals(70523, first.items.first().id)
-        assertTrue(first.hasMore)
-        assertEquals(4, next.items.size)
-        assertTrue(next.items.none { item -> first.items.any { it.id == item.id } })
-        val api = SimklListsClient(OkHttpClient(), Constants.SIMKL_V2_CLIENT_ID)
-        val list = api.list(14462, refreshedToken)
-        assertTrue(list.items.size > 300)
-        assertEquals("Dark", list.items.first().title)
-        assertEquals(70523, list.items.first().tmdb)
-        val index = api.officialLists(refreshedToken)
-        val matches = index.filter { it.name.contains("mindfuck", true) }
-        assertTrue(matches.isNotEmpty())
-        assertTrue(listsRepository.search("mindfuck").any { it.id == "simkl:14462" })
+        val listsRepository = liveRepository()
+        assertTrue("Sign into ARVIO and connect SIMKL in Settings before running the live test",
+            listsRepository.refreshStatus(force = true))
+        val list = listsRepository.load(14462, force = true)
+        assertTrue("SIMKL list 14462 returned no items", list.items.isNotEmpty())
+        assertTrue("SIMKL list search returned no matching results", listsRepository.search("mindfuck").isNotEmpty())
+
         val imageLoader = ImageLoader.Builder(context).build()
         try {
-            val poster = list.items.first().poster!!
+            val poster = list.items.firstOrNull { it.poster != null }?.poster
+            assertNotNull("SIMKL list has no poster to test", poster)
             assertTrue(imageLoader.execute(ImageRequest.Builder(context).data(poster).size(180, 270).build()) is SuccessResult)
-            val results = matches.map { item -> CatalogDiscoveryResult("simkl:${item.id}", item.name, item.description,
-                CatalogSourceType.SIMKL, item.url, item.ownerName, item.ownerId?.toString(), item.updatedAt,
-                item.count, item.likes, item.posters) }
+            val results = listOf(CatalogDiscoveryResult("simkl:${list.id}", list.name, list.description,
+                CatalogSourceType.SIMKL, list.url, list.ownerName, list.ownerId?.toString(), list.updatedAt,
+                list.count, list.likes, list.posters))
             var added: String? = null
             var submitted = false
             compose.setContent {
@@ -113,10 +82,8 @@ class SimklCatalogDeviceTest {
             File(folder, "simkl-catalog-search-tv.png").outputStream().use {
                 compose.onNode(isDialog()).captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
             }
-        } finally { imageLoader.shutdown() }
         } finally {
-            catalogs.removeCustomCatalog(saved.id).getOrThrow()
-            listsRepository.disconnect()
+            imageLoader.shutdown()
         }
     }
 
@@ -138,36 +105,31 @@ class SimklCatalogDeviceTest {
         }
     }
 
-    @Test fun liveV2DeviceSignInPersistsGrant(): Unit = runBlocking {
+    @Test fun liveCoordinatorDeviceSignInPersistsServerConnection(): Unit = runBlocking {
         assumeTrue(InstrumentationRegistry.getArguments().getString("simklDeviceAuth") == "true")
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val profile = mockk<ProfileManager>(relaxed = true)
-        every { profile.getProfileIdSync() } returns "simkl-pin-qa"
-        val repository = SimklListsRepository(context, profile)
-        val store = mockk<SyncProviderStore>(relaxed = true)
-        coEvery { store.getSimklAccessToken() } coAnswers { repository.accessToken() }
-        val manager = SimklAuthManager(mockk(relaxed = true), store, repository)
-        val code = manager.startPinAuth()
+        val repository = liveRepository()
+        val session = repository.startDevice()
+        assertEquals("server-managed", session.deviceCode)
+        assertTrue(session.userCode.isNotBlank())
         val folder = File(context.getExternalFilesDir(null), "simkl-catalog-qa").apply { mkdirs() }
-        File(folder, "device-auth-url.txt").writeText(code.verificationUrl)
+        val urlFile = File(folder, "device-auth-url.txt")
+        urlFile.writeText(session.url)
         try {
             var connected = false
             repeat(48) {
-                if (!connected) { delay(5_000); connected = manager.pollPinAuth(code.userCode) }
+                if (!connected) {
+                    delay(session.interval.coerceAtLeast(5) * 1_000L)
+                    connected = repository.poll(session, repository.profileId())
+                }
             }
-            assertTrue("Live V2 PIN authorization timed out", connected)
-            assertTrue(manager.isV2Connected())
-            assertEquals(Constants.SIMKL_V2_CLIENT_ID, manager.effectiveClientId)
-            val token = repository.accessToken()
-            val privateGrant = context.getSharedPreferences("simkl_lists_v2", android.content.Context.MODE_PRIVATE).getString("grant_simkl-pin-qa", null)
-            File(context.filesDir, "simkl-test-grant.json").writeText(SecureStorage.decrypt(privateGrant, "arvio_simkl_lists_v2")!!)
-            assertTrue(token.startsWith("simkl_at_"))
-            assertEquals(token, SimklListsRepository(context, profile).accessToken())
-            assertTrue(SimklListsClient(OkHttpClient(), Constants.SIMKL_V2_CLIENT_ID).userId(token) > 0)
+            assertTrue("Live coordinator PIN authorization timed out", connected)
+            assertTrue(repository.refreshStatus(force = true))
+            assertTrue(repository.isConnected())
+            assertEquals(SimklListsRepository.COORDINATOR_CONNECTION, repository.connectionId())
         } finally {
-            manager.cancelPinAuth()
-            repository.disconnect()
-            File(folder, "device-auth-url.txt").delete()
+            urlFile.delete()
+            // Deliberately do NOT disconnect SIMKL; this test uses the real ARVIO account.
         }
     }
 }

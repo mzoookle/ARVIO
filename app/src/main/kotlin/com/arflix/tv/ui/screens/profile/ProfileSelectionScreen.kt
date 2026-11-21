@@ -466,11 +466,8 @@ internal fun ProfileSelectionContent(
                     CloudConnectButton(
                         onClick = {
                             if ((isTouchDevice || isReadyForInput) && !uiState.isSwitchingProfile && !isTransitioning) {
-                                if (isTouchDevice) {
-                                    viewModel.openCloudEmailPasswordDialog()
-                                } else {
-                                    viewModel.startCloudAuth()
-                                }
+                                // Restore the QR/device-code pairing flow on all devices.
+                                viewModel.startCloudAuth()
                             }
                         }
                     )

@@ -1,0 +1,422 @@
+--- a/web/lib/addons.ts
++++ b/web/lib/addons.ts
+@@ -141,6 +141,26 @@
+   const manifest = raw.manifest && typeof raw.manifest === "object" ? raw.manifest : undefined;
+   const pick = <T,>(own: T[] | undefined, fallback: unknown) =>
+     Array.isArray(own) && own.length ? own : Array.isArray(fallback) ? fallback : own;
++  const resources = normalizeResources(pick(raw.resources, manifest?.resources));
++  const catalogs = normalizeCatalogs(pick(raw.catalogs, manifest?.catalogs));
++  const resourceObjects = resources.map(resource => typeof resource === "string"
++    ? { name: resource, types: [] as string[], idPrefixes: null }
++    : { name: resource.name, types: resource.types ?? [], idPrefixes: resource.idPrefixes ?? null });
++  const sourceType = typeof (raw as { type?: unknown }).type === "string"
++    && ["OFFICIAL", "COMMUNITY", "SUBTITLE", "METADATA", "CUSTOM"].includes((raw as { type: string }).type)
++    ? (raw as { type: string }).type
++    : resourceObjects.some(resource => resource.name === "subtitles") && !resourceObjects.some(resource => resource.name === "stream")
++      ? "SUBTITLE" : "CUSTOM";
++  const canonicalManifest = manifest || resources.length || catalogs.length ? {
++    ...(manifest ?? {}),
++    id: typeof manifest?.id === "string" && manifest.id ? manifest.id : id,
++    name: typeof manifest?.name === "string" && manifest.name ? manifest.name : (typeof raw.name === "string" ? raw.name : "Unnamed addon"),
++    version: typeof manifest?.version === "string" && manifest.version ? manifest.version : (typeof raw.version === "string" ? raw.version : "1.0.0"),
++    description: typeof manifest?.description === "string" ? manifest.description : (raw.description ?? ""),
++    resources: resourceObjects,
++    catalogs,
++    types: stringList(pick(raw.types, manifest?.types)) ?? []
++  } : undefined;
+   return {
+     // CRITICAL: preserve every field we don't understand. The Android app's
+     // addon entries carry `type`/`url`/`transportUrl`/`isInstalled`/`manifest`
+@@ -154,15 +174,22 @@
+     version: typeof raw.version === "string" && raw.version ? raw.version : "1.0.0",
+     manifestUrl,
+     description: raw.description ?? null,
+-    catalogs: normalizeCatalogs(pick(raw.catalogs, manifest?.catalogs)),
+-    resources: normalizeResources(pick(raw.resources, manifest?.resources)),
++    catalogs,
++    resources,
+     types: stringList(pick(raw.types, manifest?.types)),
+     idPrefixes: stringList(pick(raw.idPrefixes, manifest?.idPrefixes)),
+     logo: raw.logo ?? null,
+     background: raw.background ?? null,
+     enabled,
+-    // Mirror the Android flag so a web-side enable/disable round-trips.
+-    isEnabled: enabled
++    // Android Addon data class fields must be available even for legacy web-only records.
++    isInstalled: (raw as { isInstalled?: boolean }).isInstalled !== false,
++    isEnabled: enabled,
++    type: sourceType,
++    runtimeKind: (raw as { runtimeKind?: string }).runtimeKind || "STREMIO",
++    installSource: (raw as { installSource?: string }).installSource || "DIRECT_URL",
++    url: raw.url || manifestUrl,
++    transportUrl: raw.transportUrl || manifestUrl.replace(/\/manifest\.json(\?.*)?$/, "$1").replace(/\/+$/, ""),
++    ...(canonicalManifest ? { manifest: canonicalManifest } : {})
+   } as InstalledAddon;
+ }
+ 
+--- a/web/lib/cloud.ts
++++ b/web/lib/cloud.ts
+@@ -958,7 +958,11 @@
+       .filter((repo) => repo.id);
+   }
+   const enrichedAddons = enrichAddonsWithMetadataCache(
+-    unionAddons(arrayValue<InstalledAddon>(profileAddons), arrayValue<InstalledAddon>(root.addons)),
++    unionAddons(arrayValue<InstalledAddon>(profileAddons), arrayValue<InstalledAddon>(root.addons)).map(addon => ({
++      ...addon,
++      manifestUrl: cloudManifestUrl(addon),
++      enabled: addon.enabled !== false && (addon as InstalledAddon & { isEnabled?: boolean }).isEnabled !== false
++    })),
+     objectRecord<Record<string, unknown>>(root.addonMetadataByKey)
+   );
+   if (Array.isArray(catalogSettings.catalogs) && enrichedAddons.length > 0) {
+@@ -1031,14 +1035,21 @@
+   });
+ }
+ 
++function cloudManifestUrl(addon: InstalledAddon): string {
++  const compatible = addon as InstalledAddon & { url?: string; transportUrl?: string };
++  const raw = compatible.manifestUrl || compatible.url || compatible.transportUrl || "";
++  if (!raw) return "";
++  return /\/manifest\.json(?:\?.*)?$/i.test(raw) ? raw : `${raw.replace(/\/+$/, "")}/manifest.json`;
++}
++
+ function mergeAddonPair(preferred: InstalledAddon, fallback: InstalledAddon): InstalledAddon {
+   const pSetup = Number(preferred.setupUpdatedAt ?? 0) || 0;
+   const fSetup = Number(fallback.setupUpdatedAt ?? 0) || 0;
+   const setupWinner = fSetup > pSetup ? fallback : preferred;
+   const setupOther = setupWinner === preferred ? fallback : preferred;
+ 
+-  const winnerUrl = setupWinner.manifestUrl;
+-  const otherUrl = setupOther.manifestUrl;
++  const winnerUrl = cloudManifestUrl(setupWinner);
++  const otherUrl = cloudManifestUrl(setupOther);
+   const keepConfiguredUrl = isConfiguredAddonUrl(otherUrl) && !isConfiguredAddonUrl(winnerUrl) &&
+     Number(setupWinner.setupUpdatedAt ?? 0) <= Number(setupOther.setupUpdatedAt ?? 0);
+ 
+@@ -1063,6 +1074,7 @@
+     ...setupOther,
+     ...setupWinner,
+     manifestUrl: keepConfiguredUrl ? otherUrl : winnerUrl,
++    url: (setupWinner as InstalledAddon & { url?: string }).url || (setupOther as InstalledAddon & { url?: string }).url || (keepConfiguredUrl ? otherUrl : winnerUrl),
+     ...(keepConfiguredUrl ? { url: otherUrl, transportUrl: otherUrl.replace(/\/manifest\.json$/, "") } : {}),
+     version: metaWinner.version || metaOther.version,
+     description: metaWinner.description ?? metaOther.description,
+@@ -1113,13 +1125,13 @@
+   const indexByUrl = new Map<string, number>();
+   for (const addon of [...primary, ...arrayValue<InstalledAddon>(existing)]) {
+     if (!addon || (!addon.id && !addon.manifestUrl)) continue;
+-    const urlKey = normalizeAddonUrlKey(addon.manifestUrl);
++    const urlKey = normalizeAddonUrlKey(cloudManifestUrl(addon));
+     let idx = addon.id ? indexById.get(addon.id) : undefined;
+     if (idx === undefined && urlKey) idx = indexByUrl.get(urlKey);
+     if (idx !== undefined) {
+       result[idx] = mergeAddonPair(result[idx], addon);
+       if (result[idx].id) indexById.set(result[idx].id, idx);
+-      const mergedUrlKey = normalizeAddonUrlKey(result[idx].manifestUrl);
++      const mergedUrlKey = normalizeAddonUrlKey(cloudManifestUrl(result[idx]));
+       if (mergedUrlKey) indexByUrl.set(mergedUrlKey, idx);
+     } else {
+       const nextIdx = result.length;
+--- a/web/lib/simkl.ts
++++ b/web/lib/simkl.ts
+@@ -248,6 +248,30 @@
+   private restorePromise: Promise<void> | null = null;
+ 
+   private async sessionRequest<T>(profile: string, input?: Record<string, unknown>, connection?: string): Promise<T> {
++    if (config.selfHosted) {
++      const { providerCoordinator } = await import("./providerCoordinator");
++      const { authClient } = await import("./store/clients");
++      const marker = (): SimklToken => ({
++        access_token: "simkl_session_cloud_" + (authClient.session?.userId ?? "") + "_" + profile,
++        server_session: true,
++        connection_id: "cloud_" + (authClient.session?.userId ?? "") + "_" + profile
++      });
++      const action = String(input?.action ?? "status");
++      if (action === "status" || action === "migrate") {
++        const status = await providerCoordinator<{ connected: boolean }>("simkl", profile, "status");
++        return { token: status.connected ? marker() : null } as T;
++      }
++      if (action === "start") {
++        const code = await providerCoordinator<{ userCode: string; verificationUrl: string; expiresIn: number; interval: number }>("simkl", profile, "start");
++        return { user_code: code.userCode, verification_url: code.verificationUrl, expires_in: code.expiresIn, interval: code.interval } as T;
++      }
++      if (action === "poll") {
++        const status = await providerCoordinator<{ connected: boolean }>("simkl", profile, "poll");
++        return { token: status.connected ? marker() : null } as T;
++      }
++      if (action === "disconnect") return await providerCoordinator<T>("simkl", profile, "disconnect");
++      throw new Error("Unsupported SIMKL cloud operation.");
++    }
+     const response = await fetch("/api/simkl/session", {
+       method: input ? "POST" : "GET", credentials: "same-origin", cache: "no-store",
+       headers: { "Content-Type": "application/json", "x-simkl-profile": profile, ...(connection ? { "x-simkl-connection": connection } : {}) },
+@@ -319,6 +343,15 @@
+       this.token = null;
+       return;
+     }
++    if (config.selfHosted) {
++      // Browser V2/legacy grants and server-session cookies are no longer the
++      // source of truth. Clear any old device-local grants during cutover.
++      removeStored(this.tokenKey(normalized));
++      removeStored(LEGACY_SIMKL_TOKEN_KEY);
++      removeStored(this.disconnectKey(normalized));
++      this.token = null;
++      return;
++    }
+ 
+     let stored = loadStored<SimklToken | null>(this.tokenKey(normalized), null);
+     if (!stored) {
+@@ -339,6 +372,11 @@
+   }
+ 
+   setToken(token: SimklToken | null) {
++    if (config.selfHosted && token && (!token.server_session || !token.access_token.startsWith("simkl_session_cloud_"))) {
++      // Never treat credentials from the legacy account snapshot as a current
++      // cloud coordinator connection.
++      return;
++    }
+     if (token?.refresh_token || token?.access_token.startsWith("simkl_at_")) throw new Error("SIMKL V2 credentials must remain on the server");
+     const next = token?.access_token ? token : null;
+     const tokenChanged = (next?.connection_id ?? next?.access_token) !== (this.token?.connection_id ?? this.token?.access_token);
+@@ -355,11 +393,23 @@
+     }
+     this.token = next;
+     if (!this.profileId) return;
+-    if (this.token) saveStored(this.tokenKey(this.profileId), this.token);
++    if (this.token && !config.selfHosted) saveStored(this.tokenKey(this.profileId), this.token);
+     else removeStored(this.tokenKey(this.profileId));
+   }
+ 
+   async disconnect(): Promise<void> {
++    if (config.selfHosted) {
++      const profile = this.profileId;
++      if (!profile) return;
++      await this.sessionRequest(profile, { action: "disconnect" });
++      if (this.profileId === profile) {
++        this.sessionGeneration++;
++        this.restorePromise = null;
++        this.deviceSession = null;
++        this.setToken(null);
++      }
++      return;
++    }
+     const profile = this.profileId;
+     const old = this.token;
+     this.sessionGeneration++;
+@@ -376,6 +426,19 @@
+   }
+ 
+   private async simkl<T>(path: string, options: RequestInit = {}, accessToken = this.token?.access_token): Promise<T> {
++    if (config.selfHosted) {
++      const profile = this.profileId;
++      if (!profile || !this.token?.server_session) throw new Error("Connect SIMKL in ARVIO Settings.");
++      const { providerCoordinatorRequest } = await import("./providerCoordinator");
++      const method = (options.method || "GET").toUpperCase();
++      let body: unknown;
++      if (typeof options.body === "string") body = JSON.parse(options.body);
++      else if (options.body != null) throw new Error("SIMKL request must use JSON data.");
++      const scopeBefore = this.scope();
++      const result = await providerCoordinatorRequest<T>("simkl", profile, path, method, body);
++      if (profile !== this.profileId || scopeBefore !== this.scope()) throw new Error("SIMKL profile changed during request.");
++      return result.data;
++    }
+     const scope = this.scope();
+     if (this.token?.refresh_token) {
+       await this.restoreSession();
+--- a/web/lib/wetrakr.ts
++++ b/web/lib/wetrakr.ts
+@@ -1,4 +1,5 @@
+ import type { SyncClient, SyncMediaRef } from "./sync";
++import { config } from "./config";
+ 
+ type Row = Record<string, any>;
+ type Marker = { connection_id: string; server_session: true };
+@@ -42,6 +43,13 @@
+     if (!profile) throw new Error("Choose an ARVIO profile first.");
+     if (Date.now() < this.blockedUntil) throw new Error("WeTrakr is limiting requests. Please try again later.");
+     const connection = this.marker?.connection_id;
++    if (config.selfHosted) {
++      if (!this.marker) throw new Error("Connect WeTrakr in ARVIO Settings.");
++      const { providerCoordinatorRequest } = await import("./providerCoordinator");
++      const { data, headers } = await providerCoordinatorRequest<Row>("wetrakr", profile, `/${path}`, method, body);
++      if (profile !== this.profile || connection !== this.marker?.connection_id) throw new Error("The active connection changed.");
++      return { data, response: { headers } };
++    }
+     const response = await fetch(`/api/wetrakr/${path}`, { method, credentials: "same-origin", cache: "no-store",
+       headers: { "Content-Type": "application/json", "x-wetrakr-profile": profile, "x-wetrakr-connection": this.marker?.connection_id || "" },
+       body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+@@ -55,18 +63,54 @@
+     if (profile !== this.profile || path !== "session" && connection !== this.marker?.connection_id) throw new Error("The active connection changed.");
+     return { data, response };
+   }
+-  async restoreSession() { const { data } = await this.call("session"); this.marker = data.token || null; }
++  async restoreSession() {
++    if (config.selfHosted) {
++      const profile = this.profile;
++      if (!profile) return;
++      const { providerCoordinator } = await import("./providerCoordinator");
++      const status = await providerCoordinator<{ connected: boolean }>("wetrakr", profile, "status");
++      if (profile === this.profile) this.marker = status.connected ? { connection_id: "cloud", server_session: true } : null;
++      return;
++    }
++    const { data } = await this.call("session"); this.marker = data.token || null;
++  }
+   async begin(): Promise<WeTrakrCode> {
++    if (config.selfHosted) {
++      if (!this.profile) throw new Error("Choose an ARVIO profile first.");
++      const { providerCoordinator } = await import("./providerCoordinator");
++      const data = await providerCoordinator<{ userCode: string; verificationUrl: string; expiresIn: number; interval: number }>("wetrakr", this.profile, "start");
++      return { user_code: data.userCode, verification_url: data.verificationUrl, expires_in: data.expiresIn,
++        interval: data.interval, expiresAt: Date.now() + data.expiresIn * 1000 };
++    }
+     const { data } = await this.call("session", "POST", { action: "start" });
+     return { ...data, expiresAt: Date.now() + data.expires_in * 1000 };
+   }
+   async poll(code: WeTrakrCode) {
+     if (Date.now() >= code.expiresAt) throw new Error("The WeTrakr code expired. Request a new code.");
++    if (config.selfHosted) {
++      const profile = this.profile;
++      if (!profile) return false;
++      const { providerCoordinator } = await import("./providerCoordinator");
++      const data = await providerCoordinator<{ connected: boolean }>("wetrakr", profile, "poll");
++      if (profile !== this.profile) return false;
++      if (data.connected) { this.marker = { connection_id: "cloud", server_session: true }; this.cache.clear(); return true; }
++      return false;
++    }
+     const { data } = await this.call("session", "POST", { action: "poll", user_code: code.user_code });
+     if (data.token) { this.marker = data.token; this.cache.clear(); return true; }
+     return false;
+   }
+-  async disconnect() { await this.call("session", "POST", { action: "disconnect" }); this.marker = null; this.cache.clear(); }
++  async disconnect() {
++    if (config.selfHosted) {
++      const profile = this.profile;
++      if (!profile) return;
++      const { providerCoordinator } = await import("./providerCoordinator");
++      await providerCoordinator("wetrakr", profile, "disconnect");
++      if (profile === this.profile) { this.marker = null; this.cache.clear(); }
++      return;
++    }
++    await this.call("session", "POST", { action: "disconnect" }); this.marker = null; this.cache.clear();
++  }
+   private async list(status: string, target: string) {
+     const profile = this.profile;
+     const key = `${profile}:${status}:${target}`;
+--- a/web/lib/store/refresh.ts
++++ b/web/lib/store/refresh.ts
+@@ -7,7 +7,7 @@
+ import { shouldRefreshAutomatically } from "../automaticRefresh";
+ import { loadLocalAddons, normalizeAddons, saveLocalAddons } from "../addons";
+ import { mergeCatalogs } from "../catalogs";
+-import { getContinueWatching, pullCloudContinueWatchingDismissals, pullCloudPayload, pullCloudTrackingSelection, pullCloudWatchedKeys, pullCloudWatchlist, saveCloudAddons, saveCloudTrackingSelection } from "../cloud";
++import { getContinueWatching, pullCloudContinueWatchingDismissals, pullCloudPayload, pullCloudTrackingSelection, pullCloudWatchedKeys, pullCloudWatchlist, saveCloudTrackingSelection } from "../cloud";
+ import { completionTimes, includeIptvContinueWatching, mergePartialContinueWatching, mergeTrackerContinueWatching, pruneCompletedResume } from "../continueWatching";
+ import { episodeAvailabilityKey } from "../episodeAvailability";
+ import { savePlaylists } from "../iptv";
+@@ -16,6 +16,7 @@
+ import { flushSettingsOutbox, hasPendingSettings, settingsWithPendingEdits } from "../settingsOutbox";
+ import { continueWatchingActivitySignature, createTraktActivityCheck } from "../traktActivity";
+ import { mdblistClient } from "../mdblist";
++import { config } from "../config";
+ import { simklClient } from "../simkl";
+ import { defaultTrackingPreferences, loadTrackingPreferences, readsFrom, sameTrackingSources, saveTrackingPreferences, syncClient } from "../sync";
+ import type { MediaItem } from "../types";
+@@ -113,7 +114,7 @@
+             }
+           } else {
+             traktClient.setToken(cloudTracking.traktToken);
+-            if (!simklClient.isV2Connected) simklClient.setToken(cloudTracking.simklToken);
++            if (!config.selfHosted && !simklClient.isV2Connected) simklClient.setToken(cloudTracking.simklToken);
+             mdblistClient.setKey(cloudTracking.mdbListApiKey);
+             if (cloudTracking.mdbListAccessToken) {
+               mdblistClient.setToken({
+@@ -178,7 +179,6 @@
+       // If the pull explicitly returned an EMPTY cloud list but we still hold
+       // addons locally, the cloud is stale/partial — self-heal by pushing our
+       // list back up instead of wiping.
+-      const cloudReturnedEmpty = cloud !== null && cloudAddons.length === 0;
+       const addonState = source.map((addon) => ({
+         ...addon,
+         enabled: !effectiveSettings.disabledAddonIds.includes(addon.id) && addon.enabled !== false
+@@ -188,9 +188,6 @@
+       // Only persist locally when we actually have addons — an empty list can't
+       // overwrite a good one.
+       if (addonState.length) saveLocalAddons(addonState);
+-      if (cloudReturnedEmpty && source.length && authClient.session && !hasPendingAddons(authClient)) {
+-        void saveCloudAddons(authClient, source, profileId).catch(() => undefined);
+-      }
+ 
+       effectiveSettings = managed.applySettings(effectiveSettings);
+       const effectiveCatalogs = mergeCatalogs(effectiveSettings.catalogs, effectiveSettings.hiddenCatalogIds, effectiveSettings.hiddenAddonCatalogIds);
+--- a/app/src/main/kotlin/com/arflix/tv/data/repository/CloudSyncRepository.kt
++++ b/app/src/main/kotlin/com/arflix/tv/data/repository/CloudSyncRepository.kt
+@@ -1994,38 +1994,42 @@
+         }
+ 
+         // ── Addons ──
++        // Web InstalledAddon and Android Addon use different JSON shapes. Decode each
++        // record separately so one legacy/partial manifest cannot cancel the entire restore.
+         try {
+             val cloudAddonsTs = root.optLong("addonsUpdatedAt", 0L)
+             val changeType = object : TypeToken<Map<String, AddonChange>>() {}.type
+             val changes: Map<String, AddonChange>? = root.optJSONObject("addonChanges")?.let {
+-                gson.fromJson(it.toString(), changeType)
+-            }
+-            val cloudMetadataMap = parseAddonMetadataByKey(root)
+-            if (cloudMetadataMap.isNotEmpty()) {
+-                streamRepository.mergeAddonMetadataCache(cloudMetadataMap)
+-            }
+-            root.optJSONObject("addonsByProfile")?.toString()?.takeIf { it.isNotBlank() }?.let { json ->
+-                val type = TypeToken.getParameterized(Map::class.java, String::class.java, TypeToken.getParameterized(List::class.java, Addon::class.java).type).type
+-                val map: Map<String, List<Addon>> = gson.fromJson(json, type) ?: emptyMap()
+-                val addonType = object : TypeToken<List<Addon>>() {}.type
+-                val rootAddons: List<Addon> = root.optJSONArray("addons")?.let {
+-                    gson.fromJson(it.toString(), addonType)
+-                } ?: emptyList()
+-                val sharedAddons = enrichAddonsFromCloudMetadata(
+-                    mergeAddonsForSharedRestore(map.values + listOf(rootAddons)),
+-                    cloudMetadataMap
+-                )
+-                streamRepository.applyAddonCloudState(sharedAddons, cloudAddonsTs, changes)
+-            }
+-            root.optJSONArray("addons")?.toString()?.takeIf { it.isNotBlank() }?.let { json ->
+-                if (!root.has("addonsByProfile")) {
+-                    val type = TypeToken.getParameterized(List::class.java, Addon::class.java).type
+-                    val addons: List<Addon> = gson.fromJson(json, type) ?: emptyList()
+-                    streamRepository.applyAddonCloudState(
+-                        enrichAddonsFromCloudMetadata(addons, cloudMetadataMap),
+-                        cloudAddonsTs,
+-                        changes
++                runCatching { gson.fromJson<Map<String, AddonChange>>(it.toString(), changeType) }.getOrNull()
++            }
++            val cloudMetadataMap = runCatching { parseAddonMetadataByKey(root) }.getOrDefault(emptyMap())
++            if (cloudMetadataMap.isNotEmpty()) streamRepository.mergeAddonMetadataCache(cloudMetadataMap)
++
++            val profileMap = root.optJSONObject("addonsByProfile")
++            val listSources = mutableListOf<Any?>()
++            // The top-level list is the shared catalog when the Web app has written it.
++            // Android snapshots may only have per-profile copies, so accept both.
++            root.optJSONArray("addons")?.let(listSources::add)
++            if (profileMap != null) {
++                // Process the active profile first and use deterministic ordering for others.
++                if (profileMap.has(activeProfileId)) listSources.add(profileMap.opt(activeProfileId))
++                profileMap.keys().asSequence().filter { it != activeProfileId }.sorted().forEach {
++                    listSources.add(profileMap.opt(it))
++                }
++            }
++            if (listSources.isNotEmpty()) {
++                val decoded = listSources.map { decodeCloudAddonArray(it, gson) }
++                val rejected = decoded.sumOf { it.rejected }
++                // If every supplied record is malformed, preserve working local
++                // installations instead of mistaking a failed parse for "remove all".
++                if (rejected > 0 && decoded.all { it.addons.isEmpty() }) {
++                    Log.w(TAG, "Cloud addon restore skipped: $rejected incompatible records; local addons preserved")
++                } else {
++                    if (rejected > 0) Log.w(TAG, "Cloud addon restore recovered with $rejected incompatible records skipped")
++                    val sharedAddons = enrichAddonsFromCloudMetadata(
++                        mergeAddonsForSharedRestore(decoded.map { it.addons }), cloudMetadataMap
+                     )
++                    streamRepository.applyAddonCloudState(sharedAddons, cloudAddonsTs, changes)
+                 }
+             }
+         } catch (e: Exception) {

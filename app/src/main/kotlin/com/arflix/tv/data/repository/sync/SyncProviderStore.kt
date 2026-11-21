@@ -157,6 +157,15 @@ class SyncProviderStore @Inject constructor(
         return SyncProvider.fromStorage(prefs[providerKey()])
     }
 
+    private suspend fun refreshCoordinatorStatuses(profileId: String, force: Boolean = false) {
+        try { simklV2?.refreshStatus(profileId, force) }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) { /* Preserve the last known state during coordinator outages. */ }
+        try { wetrakr?.refreshStatus(profileId, force) }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) { /* Preserve the last known state during coordinator outages. */ }
+    }
+
     val providerFlow: Flow<SyncProvider> = context.settingsDataStore.data.map { prefs ->
         SyncProvider.fromStorage(prefs[providerKey()])
     }
@@ -177,11 +186,13 @@ class SyncProviderStore @Inject constructor(
     }
 
     suspend fun getTrackingPreferences(): TrackingPreferences {
+        val activeProfile = profileManager.getProfileIdSync()
+        refreshCoordinatorStatuses(activeProfile)
         val settings = context.settingsDataStore.data.first()
         val credentials = context.traktDataStore.data.first()
         val hasWeTrakr = wetrakr?.isConnected() == true
         val hasTrakt = !credentials[traktAccessTokenKey()].isNullOrBlank()
-        val hasSimkl = simklV2?.isConnected() == true || !SecureStorage.decrypt(credentials[simklAccessTokenKey()], SIMKL_TOKEN_ALIAS).isNullOrBlank()
+        val hasSimkl = simklV2?.isConnected() == true
         val hasMdbList = !credentials[mdbListKey()].isNullOrBlank() || !credentials[mdbListAccessTokenKey()].isNullOrBlank()
         val fallback = defaultTrackingReadMode(
             hasTrakt = hasTrakt,
@@ -274,11 +285,12 @@ class SyncProviderStore @Inject constructor(
     }
 
     suspend fun onProviderConnected(provider: SyncProvider, profileId: String) {
+        refreshCoordinatorStatuses(profileId, force = true)
         val settings = context.settingsDataStore.data.first()
         val credentials = context.traktDataStore.data.first()
         val hasWeTrakr = wetrakr?.isConnected(profileId) == true
         val hasTrakt = !credentials[profileManager.profileStringKeyFor(profileId, "trakt_access_token")].isNullOrBlank()
-        val hasSimkl = simklV2?.isConnected(profileId) == true || !SecureStorage.decrypt(credentials[simklAccessTokenKeyFor(profileId)], SIMKL_TOKEN_ALIAS).isNullOrBlank()
+        val hasSimkl = simklV2?.isConnected(profileId) == true
         val hasMdbList = !credentials[mdbListKeyFor(profileId)].isNullOrBlank() || !credentials[mdbListAccessTokenKeyFor(profileId)].isNullOrBlank()
         val currentProvider = SyncProvider.fromStorage(settings[providerKeyFor(profileId)])
         val connected = when (provider) {
@@ -336,7 +348,7 @@ class SyncProviderStore @Inject constructor(
         val credentials = context.traktDataStore.data.first()
         val hasWeTrakr = wetrakr?.isConnected(profileId) == true
         val hasTrakt = !credentials[profileManager.profileStringKeyFor(profileId, "trakt_access_token")].isNullOrBlank()
-        val hasSimkl = simklV2?.isConnected(profileId) == true || !SecureStorage.decrypt(credentials[simklAccessTokenKeyFor(profileId)], SIMKL_TOKEN_ALIAS).isNullOrBlank()
+        val hasSimkl = simklV2?.isConnected(profileId) == true
         val hasMdbList = !credentials[mdbListKeyFor(profileId)].isNullOrBlank() || !credentials[mdbListAccessTokenKeyFor(profileId)].isNullOrBlank()
         val settings = context.settingsDataStore.data.first()
         val replacement = defaultTrackingReadMode(
@@ -384,18 +396,8 @@ class SyncProviderStore @Inject constructor(
         profileManager.profileStringKeyFor(profileId, "simkl_sync_watermark")
 
     suspend fun getSimklAccessToken(): String? {
-        if (simklV2?.isConnected() == true) return simklV2.accessToken()
-        val prefs = context.traktDataStore.data.first()
-        val stored = prefs[simklAccessTokenKey()]
-        val token = SecureStorage.decrypt(stored, SIMKL_TOKEN_ALIAS)
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-        if (token != null && !SecureStorage.isEncrypted(stored)) {
-            context.traktDataStore.edit { current ->
-                current[simklAccessTokenKey()] = SecureStorage.encrypt(token, SIMKL_TOKEN_ALIAS)
-            }
-        }
-        return token
+        val coordinator = simklV2 ?: return null
+        return if (coordinator.refreshStatus()) coordinator.accessToken() else null
     }
 
     suspend fun setSimklAccessToken(token: String?) {
@@ -403,19 +405,10 @@ class SyncProviderStore @Inject constructor(
     }
 
     suspend fun setSimklAccessToken(token: String?, profileId: String) {
-        val updatedAt = System.currentTimeMillis()
-        context.traktDataStore.edit { prefs ->
-            val trimmed = token?.trim().orEmpty()
-            if (trimmed.isEmpty()) {
-                prefs.remove(simklAccessTokenKeyFor(profileId))
-                prefs.remove(simklWatermarkKeyFor(profileId))
-            } else {
-                prefs[simklAccessTokenKeyFor(profileId)] = SecureStorage.encrypt(trimmed, SIMKL_TOKEN_ALIAS)
-            }
-        }
-        context.settingsDataStore.edit { prefs ->
-            prefs[simklCredentialUpdatedAtKeyFor(profileId)] = updatedAt
-        }
+        // Backward-compatible API shim only. Provider grants are server-owned; never persist a
+        // SIMKL access token locally, even if an older caller or snapshot supplies one.
+        context.traktDataStore.edit { prefs -> prefs.remove(simklAccessTokenKeyFor(profileId)) }
+        context.settingsDataStore.edit { prefs -> prefs.remove(simklCredentialUpdatedAtKeyFor(profileId)) }
     }
 
     suspend fun getSimklWatermark(): String? {
@@ -646,11 +639,11 @@ class SyncProviderStore @Inject constructor(
     // ===== Cloud backup / restore (per profile) =====
 
     suspend fun exportForProfiles(profileIds: List<String>): Map<String, ProfileSyncSelection> {
+        profileIds.forEach { profileId -> refreshCoordinatorStatuses(profileId) }
         val settingsPrefs = context.settingsDataStore.data.first()
         val traktPrefs = context.traktDataStore.data.first()
         val out = LinkedHashMap<String, ProfileSyncSelection>()
         val migratedTrackingProfiles = mutableListOf<String>()
-        val migratedSimklProfiles = mutableListOf<String>()
         val migratedMdbListProfiles = mutableListOf<String>()
         val migrationUpdatedAt = System.currentTimeMillis()
         profileIds.forEach { profileId ->
@@ -661,10 +654,8 @@ class SyncProviderStore @Inject constructor(
             val oAuthExpiresAt = traktPrefs[mdbListTokenExpiresAtKeyFor(profileId)]
             val hasMdbListCred = legacyKey != null || oAuthAccessToken != null
 
-            val simklToken = SecureStorage.decrypt(
-                traktPrefs[simklAccessTokenKeyFor(profileId)],
-                SIMKL_TOKEN_ALIAS
-            )?.trim()?.takeIf { it.isNotEmpty() }
+            // SIMKL credentials are server-owned and must never enter account-sync snapshots.
+            val simklToken: String? = null
             val watchlistMode = TrackingReadMode.fromStorage(settingsPrefs[watchlistReadModeKeyFor(profileId)])
             val continueMode = TrackingReadMode.fromStorage(settingsPrefs[continueWatchingReadModeKeyFor(profileId)])
             val watchedMode = TrackingReadMode.fromStorage(settingsPrefs[watchedReadModeKeyFor(profileId)])
@@ -680,23 +671,17 @@ class SyncProviderStore @Inject constructor(
                     migratedTrackingProfiles += profileId
                     migrationUpdatedAt
                 }
-            val simklCredentialUpdatedAt = settingsPrefs[simklCredentialUpdatedAtKeyFor(profileId)]
-                ?.takeIf { it > 0L }
-                ?: simklToken?.let {
-                    migratedSimklProfiles += profileId
-                    migrationUpdatedAt
-                }
+            val simklCredentialUpdatedAt: Long? = null
             val mdbListCredentialUpdatedAt = settingsPrefs[mdbListCredentialUpdatedAtKeyFor(profileId)]
                 ?.takeIf { it > 0L }
                 ?: (if (hasMdbListCred) {
                     migratedMdbListProfiles += profileId
                     migrationUpdatedAt
                 } else null)
-            if (provider != SyncProvider.NONE || hasMdbListCred || simklToken != null ||
+            if (provider != SyncProvider.NONE || hasMdbListCred ||
                 watchlistMode != TrackingReadMode.AUTO || continueMode != TrackingReadMode.AUTO ||
                 watchedMode != TrackingReadMode.AUTO || writeTrakt != null || writeSimkl != null || writeWeTrakr != null ||
-                updatedAt != null || simklCredentialUpdatedAt != null ||
-                mdbListCredentialUpdatedAt != null
+                updatedAt != null || mdbListCredentialUpdatedAt != null
             ) {
                 out[profileId] = ProfileSyncSelection(
                     provider = provider,
@@ -704,7 +689,7 @@ class SyncProviderStore @Inject constructor(
                     mdbListAccessToken = oAuthAccessToken,
                     mdbListRefreshToken = oAuthRefreshToken,
                     mdbListTokenExpiresAt = oAuthExpiresAt,
-                    simklAccessToken = simklToken,
+                    simklAccessToken = null,
                     watchlistReadMode = watchlistMode,
                     continueWatchingReadMode = continueMode,
                     watchedReadMode = watchedMode,
@@ -717,15 +702,10 @@ class SyncProviderStore @Inject constructor(
                 )
             }
         }
-        if (migratedTrackingProfiles.isNotEmpty() || migratedSimklProfiles.isNotEmpty() ||
-            migratedMdbListProfiles.isNotEmpty()
-        ) {
+        if (migratedTrackingProfiles.isNotEmpty() || migratedMdbListProfiles.isNotEmpty()) {
             context.settingsDataStore.edit { prefs ->
                 migratedTrackingProfiles.forEach { profileId ->
                     prefs[trackingUpdatedAtKeyFor(profileId)] = migrationUpdatedAt
-                }
-                migratedSimklProfiles.forEach { profileId ->
-                    prefs[simklCredentialUpdatedAtKeyFor(profileId)] = migrationUpdatedAt
                 }
                 migratedMdbListProfiles.forEach { profileId ->
                     prefs[mdbListCredentialUpdatedAtKeyFor(profileId)] = migrationUpdatedAt
@@ -749,25 +729,17 @@ class SyncProviderStore @Inject constructor(
                 localContinueMode != TrackingReadMode.AUTO ||
                 localWatchedMode != TrackingReadMode.AUTO ||
                 localSettings[writeToTraktKeyFor(profileId)] != null ||
-                localSettings[writeToSimklKeyFor(profileId)] != null
+                localSettings[writeToSimklKeyFor(profileId)] != null ||
+                localSettings[writeToWeTrakrKeyFor(profileId)] != null
             shouldApplyCloudTrackingSelection(
                 incomingUpdatedAt = selection.updatedAt,
                 localUpdatedAt = localSettings[trackingUpdatedAtKeyFor(profileId)],
                 hasLocalSelection = hasLocalSelection
             )
         }
-        val simklValuesToApply = values.filter { (profileId, selection) ->
-            val localToken = SecureStorage.decrypt(
-                localCredentials[simklAccessTokenKeyFor(profileId)],
-                SIMKL_TOKEN_ALIAS
-            )?.trim().orEmpty()
-            shouldApplyCloudCredential(
-                incomingUpdatedAt = selection.simklCredentialUpdatedAt,
-                localUpdatedAt = localSettings[simklCredentialUpdatedAtKeyFor(profileId)],
-                incomingHasCredential = !selection.simklAccessToken.isNullOrBlank(),
-                localHasCredential = localToken.isNotEmpty()
-            )
-        }
+        // Legacy SIMKL token fields in older snapshots are intentionally ignored. The coordinator
+        // owns the only active SIMKL grant; a snapshot must not restore a device-local credential.
+        val simklValuesToApply = emptyMap<String, ProfileSyncSelection>()
         val mdbListValuesToApply = values.filter { (profileId, selection) ->
             val incomingHasCred = !selection.mdbListApiKey.isNullOrBlank() ||
                 !selection.mdbListAccessToken.isNullOrBlank()
@@ -801,11 +773,6 @@ class SyncProviderStore @Inject constructor(
                 selection.writeToWeTrakr?.let { prefs[writeToWeTrakrKeyFor(profileId)] = it }
                 selection.updatedAt?.takeIf { it > 0L }?.let {
                     prefs[trackingUpdatedAtKeyFor(profileId)] = it
-                }
-            }
-            simklValuesToApply.forEach { (profileId, selection) ->
-                selection.simklCredentialUpdatedAt?.takeIf { it > 0L }?.let {
-                    prefs[simklCredentialUpdatedAtKeyFor(profileId)] = it
                 }
             }
             mdbListValuesToApply.forEach { (profileId, selection) ->
@@ -846,15 +813,6 @@ class SyncProviderStore @Inject constructor(
                     prefs.remove(mdbListAccessTokenKeyFor(profileId))
                     prefs.remove(mdbListRefreshTokenKeyFor(profileId))
                     prefs.remove(mdbListTokenExpiresAtKeyFor(profileId))
-                }
-            }
-            simklValuesToApply.forEach { (profileId, selection) ->
-                val simklToken = selection.simklAccessToken?.trim().orEmpty()
-                if (simklToken.isEmpty()) {
-                    prefs.remove(simklAccessTokenKeyFor(profileId))
-                } else {
-                    prefs[simklAccessTokenKeyFor(profileId)] =
-                        SecureStorage.encrypt(simklToken, SIMKL_TOKEN_ALIAS)
                 }
             }
         }

@@ -41,9 +41,10 @@ Apply these migrations to the dedicated private Cloud database, in order:
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f private-cloud/migrations/000_arvio_cloud_core.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f private-cloud/migrations/001_blob_store.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f private-cloud/migrations/002_blob_etag.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f private-cloud/migrations/006_provider_credentials.sql
 ```
 
-The first migration creates account/snapshot compatibility tables from ARVIO's existing database schema. The second adds namespaced Blob records. The third adds opaque per-write ETags and safely upgrades a table created by the earlier phase-1 overlay.
+The first migration creates account/snapshot compatibility tables from ARVIO's existing database schema. The second adds namespaced Blob records. The third adds opaque per-write ETags and safely upgrades a table created by the earlier phase-1 overlay. Migration 006 adds the encrypted, account/profile-scoped provider credential registry. If you have already applied migrations 003–005 from later phases, apply 006 after them.
 
 All new Blob values and metadata are encrypted with `ARVIO_BLOB_ENCRYPTION_KEY`. Generate a 64-character hexadecimal key with `openssl rand -hex 32`, store it in your secret manager, and back it up separately from PostgreSQL. Losing this key makes encrypted account/profile data unrecoverable. Earlier phase-1 plaintext rows remain readable and are encrypted when rewritten.
 
@@ -129,21 +130,17 @@ The 2.4 Gradle overlay allows the configured private backend URL to satisfy the 
 - Android and Web production builds, email delivery, live PostgreSQL integration, and end-to-end cross-device tests remain pending.
 - Existing ARVIO-hosted accounts and snapshots are not automatically imported. Do not point your daily-use clients at this service until the import strategy and end-to-end tests are complete.
 
-## Administrator-managed password resets
 
-This private deployment does not require an outbound email provider. The account portal's **Forgot password?** action now explains that users must contact the server administrator; it no longer calls `cloud-auth-reset` or attempts email delivery.
+### SIMKL + WeTrakr credential coordinator (server foundation)
 
-To reset an existing account password, run the following inside the API container (or an equivalent Node.js environment with the same `pg` dependency and database environment):
+The provider coordinator is a private API endpoint at `POST /provider-coordinator`. Every request requires the normal ARVIO bearer access token; the app-level key alone is not sufficient. Request bodies use `{ "provider": "simkl" | "wetrakr", "action": "status" | "start" | "poll" | "request" | "disconnect", "profileId": "..." }`. For `request`, include `path`, `method`, and optional `body`. The coordinator scopes each grant to the authenticated ARVIO account and profile, encrypts grants with AES-256-GCM, and serializes refresh/rotation through a PostgreSQL row lock. It never returns provider access or refresh tokens.
 
-```sh
-node private-cloud/reset-password.js user@example.net
+Set and back up these additional secrets before deploying this phase:
+
+```env
+ARVIO_CREDENTIAL_ENCRYPTION_KEY=<output of openssl rand -base64 32>
+SIMKL_V2_CLIENT_ID=<SIMKL OAuth V2 client ID>
+WETRAKR_CLIENT_ID=<WeTrakr API client key>
 ```
 
-The command prompts for the new password twice without echoing either entry. It requires at least 8 characters, updates the existing account's scrypt password hash, and uses the Blob record's ETag for a conditional write. The account ID, email, creation timestamp, and all profile/snapshot records remain unchanged. It requires `ARVIO_DATABASE_URL` or `DATABASE_URL`, plus the same `ARVIO_BLOB_ENCRYPTION_KEY` used by the API. Run it from an interactive terminal; passwords are deliberately not accepted as command-line arguments or environment variables.
-
-The account portal footer now contains only a neutral **About ARVIO** link to the project's public website. It no longer advertises Premium, memberships, or purchases.
-
-
-## Administrator operations
-
-For account creation, administrator password resets, PostgreSQL backup/restore, and protecting the encryption/signing secrets, see the project-level `ADMIN-OPERATIONS.md` guide. The reset CLI can inherit missing database and blob-encryption environment values from the API process when run inside the API container; see that guide for its scope and limitations.
+Do not rotate `ARVIO_CREDENTIAL_ENCRYPTION_KEY` without first re-encrypting all credential rows; losing it makes existing provider grants unrecoverable. Keep it separate from `ARVIO_BLOB_ENCRYPTION_KEY`. Apply migration 006 before enabling the endpoint. The existing Android provider repositories are not switched to this endpoint by this server patch alone; reconnecting accounts or deploying this server patch does not yet change client behavior. The Android integration patch and dashboard status-only UI are subsequent steps.

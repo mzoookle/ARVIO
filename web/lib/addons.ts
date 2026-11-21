@@ -141,6 +141,26 @@ export function normalizeAddon(addon: unknown): InstalledAddon | null {
   const manifest = raw.manifest && typeof raw.manifest === "object" ? raw.manifest : undefined;
   const pick = <T,>(own: T[] | undefined, fallback: unknown) =>
     Array.isArray(own) && own.length ? own : Array.isArray(fallback) ? fallback : own;
+  const resources = normalizeResources(pick(raw.resources, manifest?.resources));
+  const catalogs = normalizeCatalogs(pick(raw.catalogs, manifest?.catalogs));
+  const resourceObjects = resources.map(resource => typeof resource === "string"
+    ? { name: resource, types: [] as string[], idPrefixes: null }
+    : { name: resource.name, types: resource.types ?? [], idPrefixes: resource.idPrefixes ?? null });
+  const sourceType = typeof (raw as { type?: unknown }).type === "string"
+    && ["OFFICIAL", "COMMUNITY", "SUBTITLE", "METADATA", "CUSTOM"].includes((raw as { type: string }).type)
+    ? (raw as { type: string }).type
+    : resourceObjects.some(resource => resource.name === "subtitles") && !resourceObjects.some(resource => resource.name === "stream")
+      ? "SUBTITLE" : "CUSTOM";
+  const canonicalManifest = manifest || resources.length || catalogs.length ? {
+    ...(manifest ?? {}),
+    id: typeof manifest?.id === "string" && manifest.id ? manifest.id : id,
+    name: typeof manifest?.name === "string" && manifest.name ? manifest.name : (typeof raw.name === "string" ? raw.name : "Unnamed addon"),
+    version: typeof manifest?.version === "string" && manifest.version ? manifest.version : (typeof raw.version === "string" ? raw.version : "1.0.0"),
+    description: typeof manifest?.description === "string" ? manifest.description : (raw.description ?? ""),
+    resources: resourceObjects,
+    catalogs,
+    types: stringList(pick(raw.types, manifest?.types)) ?? []
+  } : undefined;
   return {
     // CRITICAL: preserve every field we don't understand. The Android app's
     // addon entries carry `type`/`url`/`transportUrl`/`isInstalled`/`manifest`
@@ -154,15 +174,22 @@ export function normalizeAddon(addon: unknown): InstalledAddon | null {
     version: typeof raw.version === "string" && raw.version ? raw.version : "1.0.0",
     manifestUrl,
     description: raw.description ?? null,
-    catalogs: normalizeCatalogs(pick(raw.catalogs, manifest?.catalogs)),
-    resources: normalizeResources(pick(raw.resources, manifest?.resources)),
+    catalogs,
+    resources,
     types: stringList(pick(raw.types, manifest?.types)),
     idPrefixes: stringList(pick(raw.idPrefixes, manifest?.idPrefixes)),
     logo: raw.logo ?? null,
     background: raw.background ?? null,
     enabled,
-    // Mirror the Android flag so a web-side enable/disable round-trips.
-    isEnabled: enabled
+    // Android Addon data class fields must be available even for legacy web-only records.
+    isInstalled: (raw as { isInstalled?: boolean }).isInstalled !== false,
+    isEnabled: enabled,
+    type: sourceType,
+    runtimeKind: (raw as { runtimeKind?: string }).runtimeKind || "STREMIO",
+    installSource: (raw as { installSource?: string }).installSource || "DIRECT_URL",
+    url: raw.url || manifestUrl,
+    transportUrl: raw.transportUrl || manifestUrl.replace(/\/manifest\.json(\?.*)?$/, "$1").replace(/\/+$/, ""),
+    ...(canonicalManifest ? { manifest: canonicalManifest } : {})
   } as InstalledAddon;
 }
 

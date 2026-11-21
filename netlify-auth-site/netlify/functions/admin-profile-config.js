@@ -33,11 +33,15 @@ function asPayload(snapshot) {
 function profileExists(payload, profileId) {
   return Array.isArray(payload.profiles) && payload.profiles.some((profile) => String(profile?.id || "") === profileId);
 }
-function selectedConfig(payload, profileId) {
+function selectedConfig(payload, profileId, providerStatuses = {}) {
   const profileSettings = object(payload.profileSettingsById)[profileId] || {};
   const addonsMap = object(payload.addonsByProfile);
   const catalogsMap = object(payload.catalogsByProfile);
   const iptvMap = object(payload.iptvByProfile);
+  const tracking = { ...object(payload.mdbListSyncByProfile)[profileId] };
+  // Credentials are never returned to the admin browser. Status is sufficient for operations.
+  for (const key of ["simklAccessToken", "simklCredentialUpdatedAt", "mdbListApiKey", "mdbListAccessToken", "mdbListRefreshToken", "mdbListTokenExpiresAt", "mdbListCredentialUpdatedAt"]) delete tracking[key];
+  const trakt = object(payload.traktTokens)[profileId] || {};
   return {
     profileSettings: object(profileSettings),
     addons: Array.isArray(addonsMap[profileId]) ? addonsMap[profileId] : (Array.isArray(payload.addons) ? payload.addons : []),
@@ -50,9 +54,11 @@ function selectedConfig(payload, profileId) {
     },
     globalSettings: Object.fromEntries(GLOBAL_KEYS.filter((key) => Object.prototype.hasOwnProperty.call(payload, key)).map((key) => [key, payload[key]])),
     integrations: {
-      traktToken: object(payload.traktTokens)[profileId] || {},
-      simklToken: object(payload.simklTokens)[profileId] || {},
-      tracking: object(payload.mdbListSyncByProfile)[profileId] || {}
+      traktStatus: { connected: Boolean(trakt.accessToken || trakt.access_token) },
+      simklStatus: providerStatuses.simkl || { provider: "simkl", status: "disconnected", connected: false },
+      wetrakrStatus: providerStatuses.wetrakr || { provider: "wetrakr", status: "disconnected", connected: false },
+      mdbListStatus: { configured: Boolean(object(payload.mdbListSyncByProfile)[profileId]?.mdbListApiKey || object(payload.mdbListSyncByProfile)[profileId]?.mdbListAccessToken) },
+      tracking
     }
   };
 }
@@ -227,32 +233,27 @@ function applyAddons(payload, profileId, value, now) {
 
 function applyIntegrations(payload, profileId, value, now) {
   if (!isObject(value)) throw badRequest("integrations_must_be_an_object");
-  const trakt = value.traktToken === undefined ? object(payload.traktTokens)[profileId] || {} : value.traktToken;
-  const simkl = value.simklToken === undefined ? object(payload.simklTokens)[profileId] || {} : value.simklToken;
-  const tracking = value.tracking === undefined ? object(payload.mdbListSyncByProfile)[profileId] || {} : value.tracking;
-  if (!isObject(trakt) || !isObject(simkl) || !isObject(tracking)) throw badRequest("integration_records_must_be_objects");
-  const traktMap = { ...object(payload.traktTokens) };
-  const simklMap = { ...object(payload.simklTokens) };
   const trackingMap = { ...object(payload.mdbListSyncByProfile) };
   const previousTracking = object(trackingMap[profileId]);
-  const timestamp = Math.max(now,
-    (Number(traktMap[profileId]?.updatedAt) || 0) + 1,
-    (Number(simklMap[profileId]?.updatedAt) || 0) + 1,
-    (Number(previousTracking.updatedAt) || 0) + 1,
-    (Number(previousTracking.simklCredentialUpdatedAt) || 0) + 1,
-    (Number(previousTracking.mdbListCredentialUpdatedAt) || 0) + 1);
-  traktMap[profileId] = { ...trakt, updatedAt: timestamp };
-  simklMap[profileId] = { ...simkl, updatedAt: timestamp };
-  trackingMap[profileId] = {
-    ...tracking,
-    updatedAt: timestamp,
-    ...(Object.prototype.hasOwnProperty.call(tracking, "simklAccessToken") ? { simklCredentialUpdatedAt: timestamp } : {}),
-    ...(Object.prototype.hasOwnProperty.call(tracking, "mdbListApiKey") || Object.prototype.hasOwnProperty.call(tracking, "mdbListAccessToken") || Object.prototype.hasOwnProperty.call(tracking, "mdbListRefreshToken") ? { mdbListCredentialUpdatedAt: timestamp } : {})
-  };
-  payload.traktTokens = traktMap;
-  payload.simklTokens = simklMap;
+  const incomingTracking = value.tracking === undefined ? {} : value.tracking;
+  if (!isObject(incomingTracking)) throw badRequest("integration_records_must_be_objects");
+  const tracking = { ...previousTracking, ...incomingTracking };
+  // SIMKL/WeTrakr credentials live in the encrypted provider table. MDBList's existing
+  // credential fields are preserved server-side but never accepted from or returned to UI.
+  for (const key of ["simklAccessToken", "simklCredentialUpdatedAt"]) delete tracking[key];
+  for (const key of ["mdbListApiKey", "mdbListAccessToken", "mdbListRefreshToken", "mdbListTokenExpiresAt", "mdbListCredentialUpdatedAt"]) {
+    if (Object.prototype.hasOwnProperty.call(previousTracking, key)) tracking[key] = previousTracking[key];
+    else delete tracking[key];
+  }
+  const timestamp = Math.max(now, (Number(previousTracking.updatedAt) || 0) + 1);
+  tracking.updatedAt = timestamp;
+  trackingMap[profileId] = tracking;
   payload.mdbListSyncByProfile = trackingMap;
-  payload.traktLinked = Object.values(traktMap).some((entry) => Boolean(entry?.accessToken || entry?.access_token));
+  if (object(payload.simklTokens)[profileId]) {
+    const simklMap = { ...object(payload.simklTokens) };
+    delete simklMap[profileId];
+    payload.simklTokens = simklMap;
+  }
 }
 
 async function loadTargetSnapshot(event, account) {
@@ -278,7 +279,23 @@ exports.handler = async (event) => {
       const profiles = Array.isArray(payload.profiles) ? payload.profiles.map((profile) => ({ id: String(profile?.id || ""), name: String(profile?.name || "Unnamed profile") })) : [];
       const profileId = String(event.queryStringParameters?.profileId || profiles[0]?.id || "");
       if (!profileId || !profileExists(payload, profileId)) return json(404, { error: "profile_not_found", profiles });
-      return json(200, { email, profiles, profileId, config: selectedConfig(payload, profileId), updatedAt: snapshot.updatedAt || snapshot.payloadUpdatedAt || null });
+      const providerResult = await backend.getPool().query(
+        `SELECT provider,status,provider_username,connected_at,expires_at,refresh_expires_at
+           FROM public.arvio_provider_credentials
+          WHERE account_id = (
+            SELECT id FROM public.arvio_accounts
+             WHERE supabase_user_id = $1::uuid OR email_normalized = $2
+             ORDER BY CASE WHEN supabase_user_id = $1::uuid THEN 0 ELSE 1 END
+             LIMIT 1
+          ) AND profile_id = $3 AND provider IN ('simkl','wetrakr')`,
+        [accountRecord.data.accountId, email, profileId]
+      );
+      const providerStatuses = Object.fromEntries(providerResult.rows.map((row) => [row.provider, {
+        provider: row.provider, status: row.status, connected: row.status === "connected",
+        username: row.provider_username || null, connectedAt: row.connected_at || null,
+        expiresAt: row.expires_at || null, refreshExpiresAt: row.refresh_expires_at || null
+      }]));
+      return json(200, { email, profiles, profileId, config: selectedConfig(payload, profileId, providerStatuses), updatedAt: snapshot.updatedAt || snapshot.payloadUpdatedAt || null });
     }
 
     const body = parseBody(event);
