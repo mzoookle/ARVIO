@@ -19,6 +19,7 @@ export function getPriorityConfig(settings: AppSettings): ProviderPriorityConfig
 export const defaultSettings: AppSettings = {
   autoPlayNext: true,
   autoPlaySingleSource: false,
+  showSourcesBeforePlay: false,
   autoPlayMinQuality: "any",
   frameRateMatchingMode: "off",
   trailerAutoPlay: true,

@@ -62,6 +62,9 @@ export function PlaybackSection() {
         <Row id="autoplay-next" label="Auto-play next episode" scope="all">
           <Toggle label="Auto-play next episode" value={settings.autoPlayNext} onChange={(v) => set({ autoPlayNext: v })} />
         </Row>
+        <Row id="show-sources-before-play" label="Show sources before playing" hint="Always open the source picker when you press Play, even when a source is ready." scope="all">
+          <Toggle label="Show sources before playing" value={settings.showSourcesBeforePlay} onChange={(v) => set({ showSourcesBeforePlay: v })} />
+        </Row>
         <Row id="autoplay-single" label="Auto-play single source" hint="Start playing straight away when only one source is found." scope="all">
           <Toggle label="Auto-play single source" value={settings.autoPlaySingleSource} onChange={(v) => set({ autoPlaySingleSource: v })} />
         </Row>

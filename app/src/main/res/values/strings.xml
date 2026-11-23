@@ -142,6 +142,8 @@
     <string name="subtitle_font">Subtitle Font</string>
     <string name="subtitle_offset">Subtitle Position</string>
     <string name="auto_play_next_title">Auto-Play Next</string>
+    <string name="show_sources_before_play">Show sources before playing</string>
+    <string name="show_sources_before_play_desc">Open the source picker when you press Play instead of choosing a source automatically.</string>
     <string name="autoplay">Autoplay</string>
     <string name="auto_play_min_quality">Auto-Play Min Quality</string>
     <string name="auto_play_max_quality">Auto-Play Max Quality</string>

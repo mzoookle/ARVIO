@@ -346,7 +346,7 @@ internal fun tvGeneralRowsForSection(section: String): List<Int> {
             (if (BuildConfig.AUDIO_SYNC_AVAILABLE) listOf(48) else emptyList()) +
             listOf(39, 9, 45)
         "ai_subtitles" -> listOf(28, 29, 30, 31, 32, 33) + LIVE_AI_SUBS_ROWS
-        "playback" -> listOf(10, 11, 12, 43, 44, 61, 55, 13, 14, 34, 37, 16, 15, 40, 27, 53, 54, 60)
+        "playback" -> listOf(10, 11, 62, 12, 43, 44, 61, 55, 13, 14, 34, 37, 16, 15, 40, 27, 53, 54, 60)
         "appearance" -> listOf(17, 49, 50, 18, 20, 21, 24, 23, 22, 41, 46, 36, 47, 56, 57) +
             (if (com.arflix.tv.ui.components.KidsNavigation.hideLiveTv) emptyList() else listOf(58)) + 59
         "profiles" -> listOf(19)
@@ -1479,6 +1479,7 @@ fun SettingsScreen(
                                                 45 -> viewModel.setUseForcedSubtitles(!uiState.useForcedSubtitles)
                                                 10 -> viewModel.setAutoPlayNext(!uiState.autoPlayNext)
                                                 11 -> viewModel.setAutoPlaySingleSource(!uiState.autoPlaySingleSource)
+                                                62 -> viewModel.setShowSourcesBeforePlay(!uiState.showSourcesBeforePlay)
                                                 12 -> viewModel.cycleAutoPlayMinQuality()
                                                 43 -> viewModel.cycleAutoPlayMaxQuality()
                                                 44 -> viewModel.cycleAutoPlayMaxSize()
@@ -2117,6 +2118,7 @@ fun SettingsScreen(
                             frameRateMatchingMode = uiState.frameRateMatchingMode,
                             autoPlayNext = uiState.autoPlayNext,
                             autoPlaySingleSource = uiState.autoPlaySingleSource,
+                            showSourcesBeforePlay = uiState.showSourcesBeforePlay,
                             autoPlayMinQuality = uiState.autoPlayMinQuality,
                             autoPlaySourceTimeout = uiState.autoPlaySourceTimeout,
                             autoPlayMaxQuality = uiState.autoPlayMaxQuality,
@@ -2143,6 +2145,7 @@ fun SettingsScreen(
                             onDnsProviderClick = openDnsProviderPicker,
                             onAutoPlayToggle = { viewModel.setAutoPlayNext(it) },
                             onAutoPlaySingleSourceToggle = { viewModel.setAutoPlaySingleSource(it) },
+                            onShowSourcesBeforePlayToggle = { viewModel.setShowSourcesBeforePlay(it) },
                             onAutoPlayMinQualityClick = { viewModel.cycleAutoPlayMinQuality() },
                             onAutoPlayMaxQualityClick = { viewModel.cycleAutoPlayMaxQuality() },
                             onAutoPlayMaxSizeClick = { viewModel.cycleAutoPlayMaxSize() },
@@ -5379,6 +5382,14 @@ private fun MobileSettingsSubPage(
                         onClick = { viewModel.setAutoPlaySingleSource(!uiState.autoPlaySingleSource) }
                     )
                     MobileSettingsRow(
+                        icon = Icons.Default.List,
+                        title = stringResource(R.string.show_sources_before_play),
+                        value = stringResource(if (uiState.showSourcesBeforePlay) R.string.on else R.string.off),
+                        toggleChecked = uiState.showSourcesBeforePlay,
+                        isFocused = false,
+                        onClick = { viewModel.setShowSourcesBeforePlay(!uiState.showSourcesBeforePlay) }
+                    )
+                    MobileSettingsRow(
                         icon = Icons.Default.HighQuality,
                         title = stringResource(R.string.auto_play_min_quality),
                         value = uiState.autoPlayMinQuality,
@@ -6919,6 +6930,7 @@ private fun TvGeneralSettingsRows(
     frameRateMatchingMode: String,
     autoPlayNext: Boolean,
     autoPlaySingleSource: Boolean,
+    showSourcesBeforePlay: Boolean,
     autoPlayMinQuality: String,
     autoPlaySourceTimeout: String = "Fast (2s)",
     autoPlayMaxQuality: String,
@@ -6948,6 +6960,7 @@ private fun TvGeneralSettingsRows(
     onDnsProviderClick: () -> Unit,
     onAutoPlayToggle: (Boolean) -> Unit,
     onAutoPlaySingleSourceToggle: (Boolean) -> Unit,
+    onShowSourcesBeforePlayToggle: (Boolean) -> Unit,
     onAutoPlayMinQualityClick: () -> Unit,
     onAutoPlayMaxQualityClick: () -> Unit,
     onAutoPlayMaxSizeClick: () -> Unit,
@@ -7087,6 +7100,7 @@ private fun TvGeneralSettingsRows(
                 45 -> SettingsToggleRow(stringResource(R.string.use_forced_subtitles), stringResource(R.string.use_forced_subtitles_desc), useForcedSubtitles, focusedIndex == localIndex, onUseForcedSubtitlesToggle, Modifier.settingsFocusSlot(localIndex))
                 10 -> SettingsToggleRow(stringResource(R.string.auto_play_next_title), stringResource(R.string.auto_play_desc), autoPlayNext, focusedIndex == localIndex, onAutoPlayToggle, Modifier.settingsFocusSlot(localIndex))
                 11 -> SettingsToggleRow(stringResource(R.string.autoplay), stringResource(R.string.autoplay_desc), autoPlaySingleSource, focusedIndex == localIndex, onAutoPlaySingleSourceToggle, Modifier.settingsFocusSlot(localIndex))
+                62 -> SettingsToggleRow(stringResource(R.string.show_sources_before_play), stringResource(R.string.show_sources_before_play_desc), showSourcesBeforePlay, focusedIndex == localIndex, onShowSourcesBeforePlayToggle, Modifier.settingsFocusSlot(localIndex))
                 12 -> SettingsRow(Icons.Default.HighQuality, stringResource(R.string.auto_play_min_quality), stringResource(R.string.auto_play_quality_desc), autoPlayMinQuality, focusedIndex == localIndex, onAutoPlayMinQualityClick, Modifier.settingsFocusSlot(localIndex))
                 43 -> SettingsRow(Icons.Default.HighQuality, stringResource(R.string.auto_play_max_quality), "", autoPlayMaxQuality, focusedIndex == localIndex, onAutoPlayMaxQualityClick, Modifier.settingsFocusSlot(localIndex))
                 44 -> SettingsRow(Icons.Default.Storage, stringResource(R.string.auto_play_max_size), "", if (autoPlayMaxSizeGb == 0) stringResource(R.string.autoplay_unlimited) else "$autoPlayMaxSizeGb GB", focusedIndex == localIndex, onAutoPlayMaxSizeClick, Modifier.settingsFocusSlot(localIndex))

@@ -82,7 +82,8 @@ export function SourcePickerModal({
   activeProfileId,
   onClose,
   onToast,
-  loading
+  loading,
+  resumeSeconds
 }: {
   visible: boolean;
   item: MediaItem;
@@ -93,6 +94,7 @@ export function SourcePickerModal({
   onClose: () => void;
   onToast: (message: string) => void;
   loading: boolean;
+  resumeSeconds?: number | null;
 }) {
   const translateUi = useTranslation();
   const { settings, playStream } = useAppPick("settings", "playStream");
@@ -376,7 +378,7 @@ export function SourcePickerModal({
         locked={entry.locked}
         lockedReason={entry.telegramDisabled ? TELEGRAM_DISABLED_MESSAGE : !stream.url ? "No resolved playback URL is available." : undefined}
         compact={compact}
-        onPlay={() => { playStream(stream, { forceBrowser: true }); onClose(); }}
+        onPlay={() => { playStream(resumeSeconds == null ? stream : { ...stream, resumePositionSeconds: resumeSeconds }, { forceBrowser: true }); onClose(); }}
         onExternal={(option) => openExternal(option, stream)}
         onDownload={entry.locked ? undefined : () => void downloadSource(stream)}
         onCopy={entry.locked ? undefined : () => void copyUrl(stream)}

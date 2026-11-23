@@ -184,3 +184,13 @@ app/libs/sherpa-onnx-*.aar
 app/libs/sherpa-onnx-*.aar.part
 # Private, encrypted web SIMKL session storage for source/self-hosted installs.
 web/.data/
+
+# ARVIO release signing
+release-attestation.key
+*.jks
+*.keystore
+release-upload.json
+
+# Android signing secrets
+secrets.properties
+keystore.properties

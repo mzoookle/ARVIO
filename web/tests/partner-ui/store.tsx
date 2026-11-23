@@ -20,7 +20,7 @@ export const traktClient = { isConnected: false };
 export const getPriorityConfig = () => ({ movieProviders: ["tmdb"], tvProviders: ["tmdb"], animeProviders: ["tmdb"] });
 
 const settings: AppSettings = {
-  autoPlayNext: false, autoPlaySingleSource: false, autoPlayMinQuality: "any", frameRateMatchingMode: "off",
+  autoPlayNext: false, autoPlaySingleSource: false, showSourcesBeforePlay: false, autoPlayMinQuality: "any", frameRateMatchingMode: "off",
   trailerAutoPlay: false, trailerSound: false, trailerDelaySeconds: 2, trailerInCards: false, volumeBoostDb: 0,
   includeSpecials: true, qualityFilterPreset: "off", qualityFilters: [], language: "en-US", defaultSubtitle: "en",
   secondarySubtitle: "", audioLanguage: "", subtitleSize: 100, subtitleColor: "#fff", subtitleColorName: "White",

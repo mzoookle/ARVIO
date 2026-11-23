@@ -366,6 +366,17 @@ fun DetailsScreen(
     ) {
         val state = currentUiState.value
         if (!viewModel.canStartPlayback(state.idleSyncRevision)) return
+        if (state.showSourcesBeforePlay) {
+            showStreamSelector = true
+            val identity = state.episodes.firstOrNull {
+                it.seasonNumber == displaySeason && it.episodeNumber == displayEpisode
+            }?.identity ?: viewModel.resolveEpisodeIdentity(
+                displaySeason = displaySeason, displayEpisode = displayEpisode,
+                tmdbSeason = tmdbSeason, tmdbEpisode = tmdbEpisode
+            )
+            viewModel.loadStreams(imdbId, identity)
+            return
+        }
         showStreamSelector = false
         val identity = state.episodes.firstOrNull {
             it.seasonNumber == displaySeason && it.episodeNumber == displayEpisode
@@ -579,7 +590,7 @@ fun DetailsScreen(
                             mediaType, mediaId, null, state.imdbId,
                             stream.url, stream.addonId, stream.source, startPositionMs, null
                         )
-                    } else if (!state.autoPlaySingleSource) {
+                    } else if (state.showSourcesBeforePlay || !state.autoPlaySingleSource) {
                         // Autoplay OFF → open the source picker; never auto-play.
                         showStreamSelector = true
                         val identity = selectedEp?.identity ?: state.episodes.firstOrNull {
@@ -665,7 +676,7 @@ fun DetailsScreen(
                 if (idx >= 0) episodeIndex = idx
                 if (isMobile && currentSelectedEpisodeIdentity.value != ep.identity) {
                     selectedEpisodeIdentity = ep.identity
-                } else if (isMobile || !state.autoPlaySingleSource) {
+                } else if (isMobile || state.showSourcesBeforePlay || !state.autoPlaySingleSource) {
                     selectedEpisodeIdentity = ep.identity
                     showStreamSelector = true
                     viewModel.loadStreams(state.imdbId, ep.identity)

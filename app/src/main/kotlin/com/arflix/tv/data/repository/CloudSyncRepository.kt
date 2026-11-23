@@ -333,6 +333,8 @@ class CloudSyncRepository @Inject constructor(
         val frameRateMatchingMode: String = "Off",
         val autoPlayNext: Boolean = true,
         val autoPlaySingleSource: Boolean = true,
+        // Null for older cloud snapshots, so they do not overwrite a local preference.
+        val showSourcesBeforePlay: Boolean? = null,
         val autoPlayMinQuality: String = "Any",
         val autoPlaySourceTimeout: String = "Fast (2s)",
         val autoPlayMaxQuality: String? = null,
@@ -455,6 +457,8 @@ class CloudSyncRepository @Inject constructor(
         profileManager.profileBooleanKeyFor(profileId, "auto_play_next")
     private fun autoPlaySingleSourceKeyFor(profileId: String) =
         profileManager.profileBooleanKeyFor(profileId, "auto_play_single_source")
+    private fun showSourcesBeforePlayKeyFor(profileId: String) =
+        profileManager.profileBooleanKeyFor(profileId, "show_sources_before_play")
     private fun autoPlayMinQualityKeyFor(profileId: String) =
         profileManager.profileStringKeyFor(profileId, "auto_play_min_quality")
     private fun autoPlaySourceTimeoutKeyFor(profileId: String) =
@@ -801,6 +805,7 @@ class CloudSyncRepository @Inject constructor(
                         ),
                         autoPlayNext = prefs[autoPlayNextKeyFor(profile.id)] ?: true,
                         autoPlaySingleSource = prefs[autoPlaySingleSourceKeyFor(profile.id)] ?: true,
+                        showSourcesBeforePlay = prefs[showSourcesBeforePlayKeyFor(profile.id)],
                         autoPlayMinQuality = normalizeAutoPlayMinQuality(
                             prefs[autoPlayMinQualityKeyFor(profile.id)] ?: "Any"
                         ),
@@ -1816,6 +1821,7 @@ class CloudSyncRepository @Inject constructor(
                         prefs[frameRateMatchingModeKeyFor(profileId)] = normalizeFrameRateMode(state.frameRateMatchingMode)
                         prefs[autoPlayNextKeyFor(profileId)] = state.autoPlayNext
                         prefs[autoPlaySingleSourceKeyFor(profileId)] = state.autoPlaySingleSource
+                        state.showSourcesBeforePlay?.let { prefs[showSourcesBeforePlayKeyFor(profileId)] = it }
                         prefs[autoPlayMinQualityKeyFor(profileId)] = normalizeAutoPlayMinQuality(state.autoPlayMinQuality)
                         prefs[autoPlaySourceTimeoutKeyFor(profileId)] = normalizeAutoPlaySourceTimeout(state.autoPlaySourceTimeout)
                         // Older clients omit these fields; absence must not clear a local limit.

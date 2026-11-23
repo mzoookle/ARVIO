@@ -28,6 +28,7 @@ export const SETTINGS_INDEX: SettingsIndexEntry[] = [
   { section: "services", label: "Watched history source", id: "watched-source", scope: "all" },
 
   { section: "playback", label: "Auto-play next episode", id: "autoplay-next", keywords: "autoplay binge", scope: "all" },
+  { section: "playback", label: "Show sources before playing", id: "show-sources-before-play", keywords: "choose picker manual streams play", scope: "all" },
   { section: "playback", label: "Auto-play single source", id: "autoplay-single", keywords: "autoplay", scope: "all" },
   { section: "playback", label: "Minimum quality", id: "autoplay-min-quality", keywords: "autoplay resolution 1080p 4k hd", scope: "all" },
   { section: "playback", label: "Maximum quality", id: "autoplay-max-quality", keywords: "autoplay resolution limit 4k", scope: "android" },

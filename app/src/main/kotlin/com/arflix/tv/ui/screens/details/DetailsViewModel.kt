@@ -175,6 +175,7 @@ data class DetailsUiState(
     // Cached metadata can render before resume history and episode progress have resolved.
     val isPlaybackTargetReady: Boolean = false,
     val autoPlaySingleSource: Boolean = true,
+    val showSourcesBeforePlay: Boolean = false,
     val autoPlayMinQuality: String = "Any",
     val animeStructuringStyle: AnimeStructuringStyle = AnimeStructuringStyle.BROADCAST,
     val hasAlternateAnimeStructure: Boolean = false,
@@ -529,6 +530,7 @@ class DetailsViewModel @Inject constructor(
         }
     }
     private fun autoPlaySingleSourceKey() = profileManager.profileBooleanKey("auto_play_single_source")
+    private fun showSourcesBeforePlayKey() = profileManager.profileBooleanKey("show_sources_before_play")
     private fun autoPlayMinQualityKey() = profileManager.profileStringKey("auto_play_min_quality")
     private fun showBudgetKey() = profileManager.profileBooleanKey("show_budget_on_home")
     private fun showEpisodeRatingsKey() = profileManager.profileBooleanKey("show_episode_ratings")
@@ -603,6 +605,7 @@ class DetailsViewModel @Inject constructor(
             try {
                 val prefs = context.settingsDataStore.data.first()
                 val autoPlaySingleSource = prefs[autoPlaySingleSourceKey()] ?: true
+                val showSourcesBeforePlay = prefs[showSourcesBeforePlayKey()] ?: false
                 val autoPlayMinQuality = normalizeAutoPlayMinQuality(prefs[autoPlayMinQualityKey()])
                 val showBudget = prefs[showBudgetKey()] ?: true
                 val showEpisodeRatings = prefs[showEpisodeRatingsKey()] ?: false
@@ -690,6 +693,7 @@ class DetailsViewModel @Inject constructor(
                     showEpisodeRatings = showEpisodeRatings,
                     preferredAudioLanguage = preferredAudioLanguage,
                     autoPlaySingleSource = autoPlaySingleSource,
+                    showSourcesBeforePlay = showSourcesBeforePlay,
                     autoPlayMinQuality = autoPlayMinQuality,
                     isSyncingProgress = idleReturnCoordinator.isSyncing.value ||
                         idleReturnCoordinator.syncCompleted.value > appliedIdleSyncRevision,

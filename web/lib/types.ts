@@ -515,6 +515,8 @@ export interface AppSettings {
   // Playback
   autoPlayNext: boolean;
   autoPlaySingleSource: boolean;
+  /** Always show source selection when Play is pressed (per profile). */
+  showSourcesBeforePlay: boolean;
   autoPlayMinQuality: "any" | "hd" | "fhd" | "4k";
   frameRateMatchingMode: "off" | "seamless" | "always";
   trailerAutoPlay: boolean;

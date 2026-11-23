@@ -108,6 +108,8 @@ function DetailsView({ item }: { item: MediaItem }) {
   const [personLoading, setPersonLoading] = useState(false);
   const [personVisible, setPersonVisible] = useState(false);
   const [sourcePickerVisible, setSourcePickerVisible] = useState(false);
+  // Keep the position when Play opens manual source selection (Continue/Start Over).
+  const [pickerResumeSeconds, setPickerResumeSeconds] = useState<number | null>(null);
   const [autoplayRequest, setAutoplayRequest] = useState<AutoplayRequest | null>(null);
   const [starting, setStarting] = useState(false);
   const rootRef = useRef<HTMLElement | null>(null);
@@ -338,22 +340,42 @@ function DetailsView({ item }: { item: MediaItem }) {
     const progress = episodeProgress.get(episodeKey(season, episode));
     const resume = resumeSeconds ?? (progress ? progress.positionSeconds || Math.round(progress.durationSeconds * progress.percent / 100) : 0);
     setAutoplayRequest(null);
+    if (settings.showSourcesBeforePlay) {
+      setPickerResumeSeconds(resume);
+      setSourcePickerVisible(true);
+    }
     setStarting(true);
-    await loadEpisodeStreams(displayItem, season, episode);
-    setStarting(false);
-    setAutoplayRequest({ resumeSeconds: resume });
+    try {
+      await loadEpisodeStreams(displayItem, season, episode);
+      if (!settings.showSourcesBeforePlay) setAutoplayRequest({ resumeSeconds: resume });
+    } finally {
+      setStarting(false);
+    }
   };
 
   const playPrimary = (fromStart = false) => {
     if (autoplayRequest || starting) return;
     const resumeSeconds = fromStart ? 0 : plan.resumeSeconds;
-    if (!isTv) { requestAutoplay({ resumeSeconds }); return; }
+    if (!isTv) {
+      if (settings.showSourcesBeforePlay) {
+        if (!premiumAllows("play", () => { setPickerResumeSeconds(resumeSeconds); setSourcePickerVisible(true); })) return;
+        setPickerResumeSeconds(resumeSeconds);
+        setSourcePickerVisible(true);
+      } else requestAutoplay({ resumeSeconds });
+      return;
+    }
     if (plan.season == null || plan.episode == null) {
       episodesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       episodesRef.current?.querySelector<HTMLElement>(".episode-row")?.focus({ preventScroll: true });
       return;
     }
-    if (selectedEpisode?.season === plan.season && selectedEpisode?.episode === plan.episode) requestAutoplay({ resumeSeconds });
+    if (selectedEpisode?.season === plan.season && selectedEpisode?.episode === plan.episode) {
+      if (settings.showSourcesBeforePlay) {
+        if (!premiumAllows("play", () => { setPickerResumeSeconds(resumeSeconds); setSourcePickerVisible(true); })) return;
+        setPickerResumeSeconds(resumeSeconds);
+        setSourcePickerVisible(true);
+      } else requestAutoplay({ resumeSeconds });
+    }
     else void openEpisodeSources(plan.season, plan.episode, resumeSeconds);
   };
 
@@ -490,7 +512,7 @@ function DetailsView({ item }: { item: MediaItem }) {
                 <RotateCcw size={18} /> {translateUi(plan.startOverLabel)}
               </button>
             ) : null}
-            <button type="button" className="secondary text-button" onClick={() => setSourcePickerVisible(true)}><Folder size={18} /> {translateUi("Sources")}</button>
+            <button type="button" className="secondary text-button" onClick={() => { setPickerResumeSeconds(null); setSourcePickerVisible(true); }}><Folder size={18} /> {translateUi("Sources")}</button>
             {inWatchlist ? (
               <button type="button" className="secondary text-button" onClick={() => void toggleWatchlist(displayItem)}><Trash2 size={18} /> {translateUi(" Remove")}</button>
             ) : (
@@ -584,6 +606,7 @@ function DetailsView({ item }: { item: MediaItem }) {
         onClose={() => setSourcePickerVisible(false)}
         onToast={setToast}
         loading={busy === "Finding sources"}
+        resumeSeconds={pickerResumeSeconds}
       />
     </article>
   );

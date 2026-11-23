@@ -226,6 +226,7 @@ data class SettingsUiState(
     val frameRateMatchingMode: String = "Off",
     val autoPlayNext: Boolean = true,
     val autoPlaySingleSource: Boolean = true,
+    val showSourcesBeforePlay: Boolean = false,
     val autoPlayMinQuality: String = "Any",
     val autoPlaySourceTimeout: String = "Fast (2s)",
     val autoPlayMaxQuality: String = "Unlimited",
@@ -589,6 +590,7 @@ class SettingsViewModel @Inject constructor(
     private fun autoPlayNextKey() = profileManager.profileBooleanKey("auto_play_next")
     private fun autoPlayNextKeyFor(profileId: String) = profileManager.profileBooleanKeyFor(profileId, "auto_play_next")
     private fun autoPlaySingleSourceKey() = profileManager.profileBooleanKey("auto_play_single_source")
+    private fun showSourcesBeforePlayKey() = profileManager.profileBooleanKey("show_sources_before_play")
     private fun autoPlaySingleSourceKeyFor(profileId: String) = profileManager.profileBooleanKeyFor(profileId, "auto_play_single_source")
     private fun autoPlayMinQualityKey() = profileManager.profileStringKey("auto_play_min_quality")
     private fun autoPlayMinQualityKeyFor(profileId: String) = profileManager.profileStringKeyFor(profileId, "auto_play_min_quality")
@@ -888,6 +890,7 @@ class SettingsViewModel @Inject constructor(
             mediaRepository.contentLanguage = contentLang
             var autoPlay = prefs[autoPlayNextKey()] ?: true
             var autoPlaySingleSource = prefs[autoPlaySingleSourceKey()] ?: true
+            val showSourcesBeforePlay = prefs[showSourcesBeforePlayKey()] ?: false
             // Ensure defaults are persisted on first launch so they're never ambiguous
             if (prefs[autoPlaySingleSourceKey()] == null) {
                 autoPlaySingleSource = true
@@ -1023,6 +1026,7 @@ class SettingsViewModel @Inject constructor(
                 frameRateMatchingMode = frameRateMode,
                 autoPlayNext = autoPlay,
                 autoPlaySingleSource = autoPlaySingleSource,
+                showSourcesBeforePlay = showSourcesBeforePlay,
                 autoPlayMinQuality = autoPlayMinQuality,
                 autoPlaySourceTimeout = autoPlaySourceTimeout,
                 autoPlayMaxQuality = autoPlayMaxQuality,
@@ -1937,6 +1941,12 @@ class SettingsViewModel @Inject constructor(
             syncLocalStateToCloud(silent = true)
             authRepository.saveAutoPlayNextToProfile(enabled)
         }
+    }
+
+    fun setShowSourcesBeforePlay(enabled: Boolean) {
+        if (!canManage("playback")) return
+        preferenceWriter.save(showSourcesBeforePlayKey(), enabled, { it.showSourcesBeforePlay },
+            { state, value -> state.copy(showSourcesBeforePlay = value) })
     }
 
     fun setAutoPlaySingleSource(enabled: Boolean) {

@@ -532,6 +532,7 @@ function androidProfileSettings(settings: AppSettings) {
     frameRateMatchingMode: androidFrameRateMode(settings.frameRateMatchingMode),
     autoPlayNext: settings.autoPlayNext,
     autoPlaySingleSource: settings.autoPlaySingleSource,
+    showSourcesBeforePlay: settings.showSourcesBeforePlay,
     autoPlayMinQuality: androidQuality(settings.autoPlayMinQuality),
     includeSpecials: settings.includeSpecials,
     qualityFilters: settings.qualityFilters
@@ -594,6 +595,7 @@ function settingsFromAndroidProfile(value: unknown): Partial<AppSettings> {
   if ("frameRateMatchingMode" in state) partial.frameRateMatchingMode = webFrameRateMode(state.frameRateMatchingMode);
   if ("autoPlayNext" in state) partial.autoPlayNext = Boolean(state.autoPlayNext);
   if ("autoPlaySingleSource" in state) partial.autoPlaySingleSource = Boolean(state.autoPlaySingleSource);
+  if (typeof state.showSourcesBeforePlay === "boolean") partial.showSourcesBeforePlay = state.showSourcesBeforePlay;
   if ("autoPlayMinQuality" in state) partial.autoPlayMinQuality = webQuality(state.autoPlayMinQuality);
   if ("torrServerBaseUrl" in state) partial.torrServerBaseUrl = stringValue(state.torrServerBaseUrl);
   // Source priority (StreamIntegrationRepository). Blank strings mean "not set" on Android.
@@ -917,6 +919,7 @@ export async function pullCloudPayload(auth: AuthClient, profileId?: string | nu
   delete legacySettings.streamProviderEnabledMap;
   // A prior Web profile may have written these to the account-level legacy blob.
   // Never let its disabled IDs leak into the next profile.
+  delete legacySettings.showSourcesBeforePlay;
   delete legacySettings.disabledAddonIds;
   delete legacySettings.catalogueRowLayoutModes;
   delete legacySettings.androidPluginRepositories;
