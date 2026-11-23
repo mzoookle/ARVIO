@@ -94,9 +94,12 @@ async function start(event, link=false) {
   // the browser URL stable and avoids a trailing slash being appended to a
   // .html file when the callback returns the ARVIO session fragment.
   const securityReturn = `${portalOrigin}/account/security`;
+  // TV code pairing is an explicit, same-origin return destination.
+  // Never allow an arbitrary return URL from the browser.
+  const tvPairReturn = `${portalOrigin}/tv-pair`;
   const adminReturn = `${portalOrigin}/admin`;
   const requestedReturn = link ? securityReturn : String(body.return_to || process.env.ARVIO_WEB_ORIGIN || "");
-  const allowedReturns = [process.env.ARVIO_WEB_ORIGIN, securityReturn, adminReturn].filter(Boolean);
+  const allowedReturns = [process.env.ARVIO_WEB_ORIGIN, securityReturn, adminReturn, tvPairReturn].filter(Boolean);
   let returnTo = "";
   try {
     const requested = new URL(requestedReturn);

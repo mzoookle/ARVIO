@@ -1,6 +1,6 @@
 FROM nginx:alpine
 RUN apk add --no-cache gettext
-COPY index.html admin.html delete-account.html oidc-callback.html account-security.html /usr/share/nginx/html/
+COPY index.html admin.html delete-account.html oidc-callback.html account-security.html tv-pair.html /usr/share/nginx/html/
 COPY assets/ /usr/share/nginx/html/assets/
 COPY discord/ /usr/share/nginx/html/discord/
 COPY private-cloud/nginx-portal.conf /etc/nginx/conf.d/default.conf

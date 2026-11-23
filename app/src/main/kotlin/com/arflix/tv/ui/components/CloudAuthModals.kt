@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -411,6 +412,7 @@ fun CloudPairModal(
     onDismiss: () -> Unit,
     onUseEmailPassword: () -> Unit,
 ) {
+    val context = LocalContext.current
     // Use the URL supplied by the selected cloud (including private-cloud installs).
     // Never silently send private-cloud pairings to the public ARVIO portal.
     val effectiveVerificationUrl = verificationUrl.trim()
@@ -527,6 +529,26 @@ fun CloudPairModal(
                                 )
                             }
                         }
+                    }
+
+                    // On phones, make the exact QR target tappable. The private-cloud
+                    // verification_url already contains ?code=..., so no manual entry
+                    // or reconstruction is needed (and the SSO return path stays intact).
+                    if (isMobile && effectiveVerificationUrl.startsWith("https://", ignoreCase = true)) {
+                        Text(
+                            text = stringResource(R.string.settings_open_pairing_link_with_code),
+                            style = ArflixTypography.body.copy(textDecoration = TextDecoration.Underline),
+                            color = Pink,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .padding(top = 12.dp)
+                                .clickable {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(effectiveVerificationUrl))
+                                    intent.addCategory(Intent.CATEGORY_BROWSABLE)
+                                    runCatching { context.startActivity(intent) }
+                                }
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))

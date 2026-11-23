@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Pair your TV · ARVIO</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font: 16px system-ui, sans-serif; background: #10131a; color: #f4f5f7; display: grid; min-height: 100vh; place-items: center; margin: 0; }
+    main { max-width: 32rem; padding: 2rem; background: #1b202b; border-radius: 1rem; margin: 1rem; }
+    p { line-height: 1.5; color: #c0c8d4; }
+    a { color: #a7d9ff; }
+    code { font-size: 1rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Pair your TV</h1>
+    <p id="status" role="status" aria-live="polite">Completing your Keycloak sign-in…</p>
+    <p id="details"></p>
+    <p><a href="/">Return to the account portal</a></p>
+  </main>
+  <script src="/portal-config.js"></script>
+  <script>
+  (async () => {
+    const status = document.getElementById("status");
+    const details = document.getElementById("details");
+    const savedCode = sessionStorage.getItem("arvio.oidc.pendingTvCode") || "";
+    // Credentials are delivered in the fragment by the existing OIDC callback.
+    // Remove the fragment from browser history before any network request.
+    const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    window.history.replaceState(null, "", window.location.pathname);
+    const accessToken = fragment.get("access_token") || "";
+    const refreshToken = fragment.get("refresh_token") || "";
+    try {
+      if (!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(savedCode)) {
+        throw new Error("No TV pairing code is associated with this sign-in. Return to the TV and enter a fresh code.");
+      }
+      if (!accessToken || !refreshToken) {
+        throw new Error("Sign-in tokens are missing. Enter a fresh pairing code and sign in again.");
+      }
+      const anonKey = String(window.ARVIO_APP_ANON_KEY || "");
+      if (!anonKey) throw new Error("The account portal is missing its public API configuration.");
+      status.textContent = "Approving TV pairing…";
+      const response = await fetch("/.netlify/functions/tv-auth-approve", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "apikey": anonKey,
+          "authorization": `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({ code: savedCode, refresh_token: refreshToken })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) {
+        throw new Error(String(data.error || "TV pairing was not accepted. The code may have expired."));
+      }
+      sessionStorage.removeItem("arvio.oidc.pendingTvCode");
+      status.textContent = "TV paired successfully!";
+      details.textContent = "Return to your TV. It should complete sign-in automatically.";
+    } catch (error) {
+      sessionStorage.removeItem("arvio.oidc.pendingTvCode");
+      status.textContent = "TV pairing was not completed.";
+      details.textContent = error?.message || "Start a new pairing on your TV and try again.";
+    }
+  })();
+  </script>
+</body>
+</html>

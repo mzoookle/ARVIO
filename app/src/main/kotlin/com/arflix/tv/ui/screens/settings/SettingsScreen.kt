@@ -2538,6 +2538,7 @@ fun SettingsScreen(
                         }
                         "accounts" -> AccountsSettings(
                             isCloudAuthenticated = uiState.isLoggedIn,
+                            isCloudAuthWorking = uiState.isCloudAuthWorking,
                             cloudEmail = uiState.accountEmail,
                             cloudHint = null,
                             isTraktAuthenticated = uiState.isTraktAuthenticated,
@@ -10458,6 +10459,7 @@ private fun AddonRow(
 @Composable
 private fun AccountsSettings(
     isCloudAuthenticated: Boolean,
+    isCloudAuthWorking: Boolean,
     cloudEmail: String?,
     cloudHint: String?,
     isTraktAuthenticated: Boolean,
@@ -10514,9 +10516,14 @@ private fun AccountsSettings(
 
         AccountRow(
             name = stringResource(R.string.settings_arvio_cloud),
-            description = cloudEmail ?: stringResource(R.string.settings_cloud_account_desc),
+            description = if (isCloudAuthWorking) {
+                stringResource(R.string.settings_starting_cloud_pairing)
+            } else {
+                cloudEmail ?: stringResource(R.string.settings_cloud_account_desc)
+            },
             isConnected = isCloudAuthenticated,
-            isWorking = false,
+            isWorking = isCloudAuthWorking,
+            isEnabled = !isCloudAuthWorking,
             authCode = null,
             authUrl = null,
             isFocused = focusedIndex == 0,

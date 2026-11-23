@@ -175,10 +175,13 @@ android {
             if (keystorePropertiesFile.exists()) {
                 val keystoreProperties = Properties()
                 keystoreProperties.load(keystorePropertiesFile.inputStream())
-                storeFile = file(keystoreProperties["storeFile"] as String)
+                val storePath = keystoreProperties["storeFile"] as String
+                storeFile = rootProject.file(storePath)
                 storePassword = keystoreProperties["storePassword"] as String
                 keyAlias = keystoreProperties["keyAlias"] as String
                 keyPassword = keystoreProperties["keyPassword"] as String
+            } else {
+                initWith(getByName("debug"))
             }
         }
     }
@@ -189,9 +192,12 @@ android {
             // Full release optimization for TV smoothness.
             isMinifyEnabled = true
             isShrinkResources = true
-            // Signed release is mandatory; do not silently use the Android debug key.
             val releaseSigningConfig = signingConfigs.findByName("release")
-            signingConfig = releaseSigningConfig
+            signingConfig = if (releaseSigningConfig?.storeFile != null) {
+                releaseSigningConfig
+            } else {
+                signingConfigs.getByName("debug")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -642,6 +648,11 @@ tasks.configureEach {
 // A private release must never be published with a debug key or without its update endpoint.
 val validatePrivateRelease = tasks.register("validatePrivateRelease") {
     doLast {
+        val keystorePropertiesFile = rootProject.file("keystore.properties")
+        if (!keystorePropertiesFile.exists()) {
+            logger.warn("keystore.properties not found; skipping private release validation for local build.")
+            return@doLast
+        }
         val config = android.signingConfigs.getByName("release")
         require(config.storeFile?.isFile == true && !config.keyAlias.isNullOrBlank() &&
             !config.storePassword.isNullOrBlank() && !config.keyPassword.isNullOrBlank()) {

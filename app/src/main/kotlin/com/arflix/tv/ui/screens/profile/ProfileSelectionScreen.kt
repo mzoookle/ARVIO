@@ -464,6 +464,12 @@ internal fun ProfileSelectionContent(
 
                     // Cloud connect button — focusable on TV, tappable on mobile
                     CloudConnectButton(
+                        label = if (uiState.isCloudAuthWorking) {
+                            stringResource(R.string.settings_starting_cloud_pairing)
+                        } else {
+                            stringResource(R.string.connect_to_cloud)
+                        },
+                        isWorking = uiState.isCloudAuthWorking,
                         onClick = {
                             if ((isTouchDevice || isReadyForInput) && !uiState.isSwitchingProfile && !isTransitioning) {
                                 // Restore the QR/device-code pairing flow on all devices.
