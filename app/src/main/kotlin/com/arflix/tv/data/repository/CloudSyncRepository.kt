@@ -334,6 +334,7 @@ class CloudSyncRepository @Inject constructor(
         val autoPlayNext: Boolean = true,
         val autoPlaySingleSource: Boolean = true,
         val autoPlayMinQuality: String = "Any",
+        val autoPlaySourceTimeout: String = "Fast (2s)",
         val autoPlayMaxQuality: String? = null,
         val autoPlayMaxSizeGb: Int? = null,
         val homePresentationVersion: Int = 0,
@@ -456,6 +457,8 @@ class CloudSyncRepository @Inject constructor(
         profileManager.profileBooleanKeyFor(profileId, "auto_play_single_source")
     private fun autoPlayMinQualityKeyFor(profileId: String) =
         profileManager.profileStringKeyFor(profileId, "auto_play_min_quality")
+    private fun autoPlaySourceTimeoutKeyFor(profileId: String) =
+        profileManager.profileStringKeyFor(profileId, "auto_play_source_timeout")
     private fun includeSpecialsKeyFor(profileId: String) =
         profileManager.profileBooleanKeyFor(profileId, "include_specials")
     private fun dnsProviderKey() = profileManager.profileStringKey("dns_provider")
@@ -481,6 +484,7 @@ class CloudSyncRepository @Inject constructor(
     private fun autoPlayNextKey() = profileManager.profileBooleanKey("auto_play_next")
     private fun autoPlaySingleSourceKey() = profileManager.profileBooleanKey("auto_play_single_source")
     private fun autoPlayMinQualityKey() = profileManager.profileStringKey("auto_play_min_quality")
+    private fun autoPlaySourceTimeoutKey() = profileManager.profileStringKey("auto_play_source_timeout")
     private fun autoPlayMaxQualityKeyFor(profileId: String) = profileManager.profileStringKeyFor(profileId, "auto_play_max_quality")
     private fun autoPlayMaxSizeKeyFor(profileId: String) = profileManager.profileIntKeyFor(profileId, "auto_play_max_size_gb")
     private fun includeSpecialsKey() = profileManager.profileBooleanKey("include_specials")
@@ -518,6 +522,17 @@ class CloudSyncRepository @Inject constructor(
             "1080p", "fullhd", "fhd" -> "1080p"
             "4k", "2160p", "uhd" -> "4K"
             else -> "Any"
+        }
+    }
+
+    private fun normalizeAutoPlaySourceTimeout(raw: String?): String {
+        return when (raw?.trim()?.lowercase()) {
+            "fast", "fast (2s)", "2s" -> "Fast (2s)"
+            "5s" -> "5s"
+            "10s" -> "10s"
+            "15s" -> "15s"
+            "wait for all", "wait for all sources", "wait_all" -> "Wait for all"
+            else -> "Fast (2s)"
         }
     }
 
@@ -789,6 +804,9 @@ class CloudSyncRepository @Inject constructor(
                         autoPlayMinQuality = normalizeAutoPlayMinQuality(
                             prefs[autoPlayMinQualityKeyFor(profile.id)] ?: "Any"
                         ),
+                        autoPlaySourceTimeout = normalizeAutoPlaySourceTimeout(
+                            prefs[autoPlaySourceTimeoutKeyFor(profile.id)] ?: "Fast (2s)"
+                        ),
                         includeSpecials = prefs[includeSpecialsKeyFor(profile.id)] ?: false,
                         autoPlayMaxQuality = AutoplayLimits.normalizeQuality(prefs[autoPlayMaxQualityKeyFor(profile.id)]),
                         autoPlayMaxSizeGb = AutoplayLimits.normalizeSizeGb(prefs[autoPlayMaxSizeKeyFor(profile.id)] ?: 0),
@@ -813,6 +831,7 @@ class CloudSyncRepository @Inject constructor(
         root.put("autoPlayNext", prefs[autoPlayNextKey()] ?: true)
         root.put("autoPlaySingleSource", prefs[autoPlaySingleSourceKey()] ?: true)
         root.put("autoPlayMinQuality", normalizeAutoPlayMinQuality(prefs[autoPlayMinQualityKey()] ?: "Any"))
+        root.put("autoPlaySourceTimeout", normalizeAutoPlaySourceTimeout(prefs[autoPlaySourceTimeoutKey()] ?: "Fast (2s)"))
         root.put("autoPlayMaxQuality", AutoplayLimits.normalizeQuality(prefs[profileManager.profileStringKey("auto_play_max_quality")]))
         root.put("autoPlayMaxSizeGb", AutoplayLimits.normalizeSizeGb(prefs[profileManager.profileIntKey("auto_play_max_size_gb")] ?: 0))
         root.put("includeSpecials", prefs[includeSpecialsKey()] ?: false)
@@ -1642,6 +1661,7 @@ class CloudSyncRepository @Inject constructor(
         val fallbackAutoPlayNext = root.optBoolean("autoPlayNext", true)
         val fallbackAutoPlaySingleSource = root.optBoolean("autoPlaySingleSource", true)
         val fallbackAutoPlayMinQuality = normalizeAutoPlayMinQuality(root.optString("autoPlayMinQuality", "Any"))
+        val fallbackAutoPlaySourceTimeout = normalizeAutoPlaySourceTimeout(root.optString("autoPlaySourceTimeout", "Fast (2s)"))
         val fallbackIncludeSpecials = root.optBoolean("includeSpecials", false)
         val fallbackSubtitleSettingsUpdatedAt = root.optLong("subtitleSettingsUpdatedAt", 0L)
         var preservedNewerLocalSubtitle = false
@@ -1797,6 +1817,7 @@ class CloudSyncRepository @Inject constructor(
                         prefs[autoPlayNextKeyFor(profileId)] = state.autoPlayNext
                         prefs[autoPlaySingleSourceKeyFor(profileId)] = state.autoPlaySingleSource
                         prefs[autoPlayMinQualityKeyFor(profileId)] = normalizeAutoPlayMinQuality(state.autoPlayMinQuality)
+                        prefs[autoPlaySourceTimeoutKeyFor(profileId)] = normalizeAutoPlaySourceTimeout(state.autoPlaySourceTimeout)
                         // Older clients omit these fields; absence must not clear a local limit.
                         state.autoPlayMaxQuality?.let { prefs[autoPlayMaxQualityKeyFor(profileId)] = AutoplayLimits.normalizeQuality(it) }
                         state.autoPlayMaxSizeGb?.let { prefs[autoPlayMaxSizeKeyFor(profileId)] = AutoplayLimits.normalizeSizeGb(it) }
@@ -1858,6 +1879,7 @@ class CloudSyncRepository @Inject constructor(
                 prefs[autoPlayNextKeyFor(activeProfileId)] = fallbackAutoPlayNext
                 prefs[autoPlaySingleSourceKeyFor(activeProfileId)] = fallbackAutoPlaySingleSource
                 prefs[autoPlayMinQualityKeyFor(activeProfileId)] = fallbackAutoPlayMinQuality
+                prefs[autoPlaySourceTimeoutKeyFor(activeProfileId)] = fallbackAutoPlaySourceTimeout
                 if (root.has("autoPlayMaxQuality") && !root.isNull("autoPlayMaxQuality")) {
                     prefs[autoPlayMaxQualityKeyFor(activeProfileId)] = AutoplayLimits.normalizeQuality(root.optString("autoPlayMaxQuality"))
                 }

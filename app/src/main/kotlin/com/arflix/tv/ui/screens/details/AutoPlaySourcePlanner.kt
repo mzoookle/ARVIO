@@ -15,6 +15,21 @@ internal const val AUTOPLAY_TOP_TIER_SETTLE_MS = 450L
 internal const val AUTOPLAY_SOURCE_RECHECK_MS = 120L
 private const val TOP_TIER_QUALITY_SCORE = 4
 
+internal fun parseAutoplayTimeoutMs(timeoutSetting: String?): Long {
+    return when (timeoutSetting?.trim()?.lowercase()) {
+        "5s" -> 5_000L
+        "10s" -> 10_000L
+        "15s" -> 15_000L
+        "wait for all", "wait for all sources", "wait_all" -> 30_000L
+        else -> 1_750L
+    }
+}
+
+internal fun isFastAutoplayTimeout(timeoutSetting: String?): Boolean {
+    val norm = timeoutSetting?.trim()?.lowercase().orEmpty()
+    return norm.isBlank() || norm.contains("fast") || norm == "2s"
+}
+
 private object AutoPlayRegexes {
     val fourKRegex = Regex("""\b4[kK]\b""")
     val eightKRegex = Regex("""\b8[kK]\b""")

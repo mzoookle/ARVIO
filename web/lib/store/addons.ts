@@ -20,9 +20,10 @@ export function useAddonActions(store: StoreCore & Pick<ReturnType<typeof useUpd
     const previous = new Map(personalAddonsRef.current.map(addon => [addon.id, addon]));
     const normalized = normalizeAddons(next.filter(addon => !addon.managedOrganizationId).map(addon => {
       const old = previous.get(addon.id);
-      const changed = old && (old.name !== addon.name || old.manifestUrl !== addon.manifestUrl || old.enabled !== addon.enabled);
+      const changed = old && (old.name !== addon.name || old.manifestUrl !== addon.manifestUrl);
       return changed ? { ...addon, isEnabled: addon.enabled !== false,
-        setupUpdatedAt: Math.max(now, Number(old.setupUpdatedAt || 0) + 1) } : addon;
+        setupUpdatedAt: Math.max(now, Number(old.setupUpdatedAt || 0) + 1) } :
+        { ...addon, isEnabled: addon.enabled !== false };
     }));
     queueAddons(authClient, normalized, activeProfileId, options.removedIds, options.addedIds);
     saveLocalAddons(normalized);
@@ -64,9 +65,31 @@ export function useAddonActions(store: StoreCore & Pick<ReturnType<typeof useUpd
   }, [persistAddons]);
 
   const setAddonsState = useCallback(async (next: InstalledAddon[]) => {
-    await persistAddons(next, { onLocalSave: () => updateSettings({
-      disabledAddonIds: next.filter((addon) => !addon.managedOrganizationId && addon.enabled === false).map((addon) => addon.id)
-    }) });
+    const previous = personalAddonsRef.current;
+    const oldById = new Map(previous.map(addon => [addon.id, addon]));
+    const toggled = next.filter(addon => oldById.has(addon.id) && oldById.get(addon.id)!.enabled !== addon.enabled);
+    if (toggled.length) {
+      const overrides = { ...(settingsRef.current.streamProviderEnabledMap ?? {}) };
+      for (const addon of toggled) overrides[`stremio:${addon.id}`] = addon.enabled !== false;
+      updateSettings({
+        streamProviderEnabledMap: overrides,
+        disabledAddonIds: next.filter(addon => !addon.managedOrganizationId && addon.enabled === false).map(addon => addon.id)
+      });
+    }
+    // Toggle-only: update the local view and the profile settings outbox; do
+    // not enqueue a canonical add-on write (that previously changed all profiles).
+    const sameInventory = next.length === previous.length &&
+      next.every((addon, i) => addon.id === previous[i].id && addon.manifestUrl === previous[i].manifestUrl);
+    if (sameInventory && toggled.length) {
+      const normalized = normalizeAddons(next.map(addon => ({ ...addon, isEnabled: addon.enabled !== false })));
+      saveLocalAddons(normalized);
+      personalAddonsRef.current = normalized;
+      const assigned = managed.ref.current.resources?.addons || [];
+      addonsRef.current = [...assigned, ...normalized.filter(addon => !assigned.some(a => a.id === addon.id))];
+      setAddons(normalized);
+      return;
+    }
+    await persistAddons(next);
   }, [persistAddons, updateSettings]);
   return { persistAddons, loadCatalogRow, installAddon, removeAddon, setAddonsState };
 }

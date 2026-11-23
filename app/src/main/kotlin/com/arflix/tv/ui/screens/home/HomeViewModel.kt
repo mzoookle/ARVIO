@@ -395,6 +395,7 @@ class HomeViewModel @Inject constructor(
     private val realtimeSyncManager: com.arflix.tv.data.repository.RealtimeSyncManager,
     private val profileManager: ProfileManager,
     private val appUpdateRepository: com.arflix.tv.updater.AppUpdateRepository,
+    private val deviceHeartbeatReporter: com.arflix.tv.updater.DeviceHeartbeatReporter,
     private val apkDownloader: com.arflix.tv.updater.ApkDownloader,
     private val updatePreferences: com.arflix.tv.updater.UpdatePreferences,
     private val updateStatusManager: com.arflix.tv.updater.UpdateStatusManager,
@@ -1798,6 +1799,7 @@ class HomeViewModel @Inject constructor(
     private val categoryPaginationStates = ConcurrentHashMap<String, CategoryPaginationState>()
 
     init {
+        viewModelScope.launch { deviceHeartbeatReporter.reportIfDue() }
         // A list edited through "Add to list" is shown fresh at once, not after the next reload.
         viewModelScope.launch {
             personalListsRepository.changes.collect { list -> reloadRowsFor(list.provider) }
@@ -5930,8 +5932,7 @@ class HomeViewModel @Inject constructor(
 
             val result = appUpdateRepository.getLatestUpdate()
             result.onSuccess { update ->
-                val localVer = appUpdateRepository.getInstalledVersionName()
-                val isNewer = com.arflix.tv.updater.VersionUtils.isRemoteNewer(update.tag, localVer)
+                val isNewer = appUpdateRepository.isNewer(update)
 
                 if (isNewer) {
                     updateStatusManager.updateStatus(com.arflix.tv.updater.UpdateStatus.UpdateAvailable(update))
@@ -5975,7 +5976,7 @@ class HomeViewModel @Inject constructor(
             val dest = java.io.File(java.io.File(context.cacheDir, "updates"), safeName)
 
             val result = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                apkDownloader.download(update.assetUrl, dest) { downloaded, total ->
+                apkDownloader.download(update.assetUrl, dest, update.sha256) { downloaded, total ->
                     val progress = if (total != null && total > 0L) {
                         (downloaded.toFloat() / total.toFloat()).coerceIn(0f, 1f)
                     } else null

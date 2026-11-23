@@ -61,7 +61,12 @@ object ApkInstaller {
                 pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNATURES)
             }
 
-            val apkPackage = apkInfo?.packageName ?: return null
+            val apkPackage = apkInfo?.packageName
+                ?: return "Downloaded file is not a valid Android APK"
+            // Never allow the in-app updater to install a second, unrelated application.
+            if (apkPackage != context.packageName) {
+                return "This update is for $apkPackage, not ${context.packageName}"
+            }
 
             // Get the signing info of the currently installed app
             val installedInfo: PackageInfo? = try {

@@ -3,7 +3,6 @@ import java.net.URI
 import java.security.MessageDigest
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
-import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 
 plugins {
     id("com.android.application")
@@ -18,8 +17,6 @@ plugins {
     id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
     id("io.gitlab.arturbosch.detekt")
     kotlin("plugin.serialization")
-    id("com.google.gms.google-services")
-    id("com.google.firebase.crashlytics")
 }
 
 // On-device speech recognition for sync by hearing (sherpa-onnx, Apache-2.0). The AAR is ~50 MB, so it is downloaded once into libs/ (git-ignored)
@@ -75,8 +72,6 @@ android {
         targetSdk = 36
         versionCode = 323
         versionName = "2.4"
-        buildConfigField("String", "GITHUB_OWNER", "\"ProdigyV21\"")
-        buildConfigField("String", "GITHUB_REPO", "\"ARVIO\"")
         buildConfigField("Boolean", "FEATURE_PLUGINS_ENABLED", "false")
         buildConfigField("Boolean", "PARTNER_MANAGEMENT_ENABLED", (providers.gradleProperty("partnerManagement").orNull == "true").toString())
         // Use the same resolution for generated values and release validation.
@@ -144,6 +139,7 @@ android {
             dimension = "distribution"
             // Automatic Play protection requires Android 7.0 or newer.
             minSdk = 24
+            buildConfigField("String", "PRIVATE_UPDATE_MANIFEST_URL", "\"\"")
             buildConfigField("Boolean", "SELF_UPDATE_ENABLED", "false")
             buildConfigField("Boolean", "FEATURE_PLUGINS_ENABLED", "false")
             // The initial Sync by Hearing rollout is limited to sideload builds.
@@ -153,6 +149,13 @@ android {
         }
         create("sideload") {
             dimension = "distribution"
+            // Unique package keeps this installation and its updates separate from Google Play.
+            applicationId = "com.arvio.tv.private"
+            versionCode = providers.gradleProperty("privateVersionCode").orNull?.toIntOrNull() ?: 1_000_001
+            versionName = providers.gradleProperty("privateVersionName").orNull ?: "2.4-private.1"
+            // This URL is embedded in the APK. Host it publicly over TLS; never point at the vendor.
+            val privateManifest = localSecretValue("PRIVATE_UPDATE_MANIFEST_URL")
+            buildConfigField("String", "PRIVATE_UPDATE_MANIFEST_URL", "\"${escapeBuildConfigString(privateManifest)}\"")
             buildConfigField("Boolean", "SELF_UPDATE_ENABLED", "true")
             buildConfigField("Boolean", "FEATURE_PLUGINS_ENABLED", "true")
             buildConfigField("Boolean", "AUDIO_SYNC_AVAILABLE", "true")
@@ -186,13 +189,9 @@ android {
             // Full release optimization for TV smoothness.
             isMinifyEnabled = true
             isShrinkResources = true
-            // Use release signing if configured, otherwise fall back to debug
+            // Signed release is mandatory; do not silently use the Android debug key.
             val releaseSigningConfig = signingConfigs.findByName("release")
-            signingConfig = if (releaseSigningConfig?.storeFile != null) {
-                releaseSigningConfig
-            } else {
-                signingConfigs.getByName("debug")
-            }
+            signingConfig = releaseSigningConfig
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -204,10 +203,7 @@ android {
             renderscriptOptimLevel = 3
 
             // Build config fields for release
-            buildConfigField("Boolean", "ENABLE_CRASH_REPORTING", "true")
-            configure<CrashlyticsExtension> {
-                nativeSymbolUploadEnabled = true
-            }
+            buildConfigField("Boolean", "ENABLE_CRASH_REPORTING", "false")
         }
 
         debug {
@@ -226,7 +222,7 @@ android {
             applicationIdSuffix = ".beta"
             versionNameSuffix = "-diagnostics"
             matchingFallbacks += "debug"
-            buildConfigField("Boolean", "ENABLE_CRASH_REPORTING", "true")
+            buildConfigField("Boolean", "ENABLE_CRASH_REPORTING", "false")
         }
 
         // Beta build: release-grade optimizations in a separate package so it
@@ -244,7 +240,7 @@ android {
             isDebuggable = false
             isJniDebuggable = false
 
-            buildConfigField("Boolean", "ENABLE_CRASH_REPORTING", "true")
+            buildConfigField("Boolean", "ENABLE_CRASH_REPORTING", "false")
         }
     }
 
@@ -595,7 +591,6 @@ val validateReleaseCloudSecrets = tasks.register("validateReleaseCloudSecrets") 
     doLast {
         val appAnonKey = localSecretValue("APP_ANON_KEY").ifBlank { localSecretValue("SUPABASE_ANON_KEY") }
         val supabaseUrl = localSecretValue("SUPABASE_URL")
-        val backendUrl = localSecretValue("NETLIFY_BACKEND_URL")
         val traktClientId = localSecretValue("TRAKT_CLIENT_ID")
         val traktClientSecret = localSecretValue("TRAKT_CLIENT_SECRET")
         val telegramApiId = localSecretValue("TELEGRAM_API_ID").toIntOrNull() ?: 0
@@ -609,14 +604,10 @@ val validateReleaseCloudSecrets = tasks.register("validateReleaseCloudSecrets") 
             (supabaseUrl.startsWith("https://") || supabaseUrl.startsWith("http://")) &&
                 supabaseHost.contains('.') &&
                 '*' !in supabaseUrl
-        val backendHost = backendUrl.substringAfter("://", missingDelimiterValue = "").substringBefore('/')
-        val hasValidBackendUrl =
-            (backendUrl.startsWith("https://") || backendUrl.startsWith("http://")) &&
-                backendHost.contains('.') &&
-                '*' !in backendUrl
-        require(hasValidSupabaseUrl || hasValidBackendUrl) {
-            "Release builds require either a valid HTTP(S) SUPABASE_URL or NETLIFY_BACKEND_URL. " +
-                "A private ARVIO Cloud deployment can use NETLIFY_BACKEND_URL without Supabase Auth."
+        require(hasValidSupabaseUrl) {
+            "Release builds require a valid HTTP(S) SUPABASE_URL " +
+                "(length=${supabaseUrl.length}, http=${supabaseUrl.startsWith("http")}, " +
+                "hostPresent=${supabaseHost.isNotBlank()}, hostHasDot=${supabaseHost.contains('.')}, redacted=${'*' in supabaseUrl})."
         }
         require(
             appAnonKey.length > 40 &&
@@ -639,13 +630,35 @@ val validateReleaseCloudSecrets = tasks.register("validateReleaseCloudSecrets") 
 tasks.configureEach {
     if (name in setOf(
             "prePlayReleaseBuild",
-            "preSideloadReleaseBuild",
             "prePlayStagingBuild",
             "preSideloadStagingBuild"
         )
     ) {
         dependsOn(validateReleaseCloudSecrets)
     }
+}
+
+
+// A private release must never be published with a debug key or without its update endpoint.
+val validatePrivateRelease = tasks.register("validatePrivateRelease") {
+    doLast {
+        val config = android.signingConfigs.getByName("release")
+        require(config.storeFile?.isFile == true && !config.keyAlias.isNullOrBlank() &&
+            !config.storePassword.isNullOrBlank() && !config.keyPassword.isNullOrBlank()) {
+            "A release signing keystore is required: set keystore.properties. Never ship a debug-signed APK."
+        }
+        val manifestUrl = localSecretValue("PRIVATE_UPDATE_MANIFEST_URL")
+        require(manifestUrl.startsWith("https://") && manifestUrl.endsWith(".json")) {
+            "Set PRIVATE_UPDATE_MANIFEST_URL=https://updates.example.net/updates/latest.json"
+        }
+        require((providers.gradleProperty("privateVersionCode").orNull?.toIntOrNull() ?: 1_000_001) > 0) {
+            "privateVersionCode must be a positive integer"
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name == "preSideloadReleaseBuild") dependsOn(validatePrivateRelease)
 }
 
 

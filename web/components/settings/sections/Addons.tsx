@@ -61,7 +61,7 @@ export function AddonsSection() {
 
   const toggleAddon = (addon: InstalledAddon) => {
     const enabled = addon.enabled === false;
-    if (addonServesStreams(addon)) updateSettings({ streamProviderEnabledMap: { ...providerEnabled, [`stremio:${addon.id}`]: enabled } });
+    // setAddonsState persists this in streamProviderEnabledMap for the active profile.
     void saveAddons(list.map((item) => item.id === addon.id ? { ...item, enabled } : item));
   };
 
@@ -96,7 +96,7 @@ export function AddonsSection() {
 
   return (
     <>
-      <SectionHeader title="Addons" description="Stremio-compatible addons supply catalogs, sources and subtitles. Addons are shared by every profile and every ARVIO app on your account." />
+      <SectionHeader title="Addons" description="Installations and URLs are shared across your account; enabled/disabled is saved independently for each profile." />
       <ManagedConnections items={addons.filter(addon => addon.managedOrganizationId)} />
       <Group title="Install an addon">
         <div className="st-addon-installer"><AddonInstaller /></div>

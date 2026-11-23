@@ -915,6 +915,9 @@ export async function pullCloudPayload(auth: AuthClient, profileId?: string | nu
   delete legacySettings.streamIntegrationsMacroOrder;
   delete legacySettings.streamMacroEnabledMap;
   delete legacySettings.streamProviderEnabledMap;
+  // A prior Web profile may have written these to the account-level legacy blob.
+  // Never let its disabled IDs leak into the next profile.
+  delete legacySettings.disabledAddonIds;
   delete legacySettings.catalogueRowLayoutModes;
   delete legacySettings.androidPluginRepositories;
   delete legacySettings.hiddenNavigationSections;
@@ -957,12 +960,21 @@ export async function pullCloudPayload(auth: AuthClient, profileId?: string | nu
       .map((repo) => ({ id: stringValue(repo?.id), name: stringValue(repo?.name), enabled: repo?.enabled !== false }))
       .filter((repo) => repo.id);
   }
+  const enabledOverrides = profileSettings.streamProviderEnabledMap ?? {};
   const enrichedAddons = enrichAddonsWithMetadataCache(
-    unionAddons(arrayValue<InstalledAddon>(profileAddons), arrayValue<InstalledAddon>(root.addons)).map(addon => ({
-      ...addon,
-      manifestUrl: cloudManifestUrl(addon),
-      enabled: addon.enabled !== false && (addon as InstalledAddon & { isEnabled?: boolean }).isEnabled !== false
-    })),
+    unionAddons(arrayValue<InstalledAddon>(profileAddons), arrayValue<InstalledAddon>(root.addons)).map(addon => {
+      const override = enabledOverrides[`stremio:${addon.id}`];
+      return {
+        ...addon,
+        manifestUrl: cloudManifestUrl(addon),
+        // The profile preference is authoritative, even if a legacy shared record
+        // was switched off by a different profile.
+        enabled: typeof override === "boolean" ? override :
+          addon.enabled !== false && (addon as InstalledAddon & { isEnabled?: boolean }).isEnabled !== false,
+        isEnabled: typeof override === "boolean" ? override :
+          addon.enabled !== false && (addon as InstalledAddon & { isEnabled?: boolean }).isEnabled !== false
+      };
+    }),
     objectRecord<Record<string, unknown>>(root.addonMetadataByKey)
   );
   if (Array.isArray(catalogSettings.catalogs) && enrichedAddons.length > 0) {
@@ -975,6 +987,7 @@ export async function pullCloudPayload(auth: AuthClient, profileId?: string | nu
     addons: enrichedAddons,
     settings: {
       ...legacySettings,
+      disabledAddonIds: enrichedAddons.filter(addon => addon.enabled === false).map(addon => addon.id),
       // Explicitly unset, so a profile without them never keeps the previous profile's values.
       streamProvidersCustomOrder: undefined,
       streamIntegrationsMacroOrder: undefined,
@@ -1161,13 +1174,21 @@ export async function saveCloudAddons(
     // empty per-profile scope — to wipe the shared library. A removal drops the
     // id from every scope; everything else is merged in.
     const applyRemovals = (list: InstalledAddon[]) => list.filter((a) => !changes[a.id]?.removed);
-    root.addons = applyRemovals(unionAddons(addons, root.addons));
+    // Add-on writes are installation operations. Preserve the canonical enabled
+    // bit of existing records: a per-profile toggle belongs in profileSettingsById.
+    const priorShared = new Map<string, InstalledAddon>(arrayValue<InstalledAddon>(root.addons).map(addon => [addon.id, addon] as const));
+    const sharedInput = addons.map(addon => {
+      const prior = priorShared.get(addon.id);
+      return prior ? { ...addon, enabled: prior.enabled !== false, isEnabled: (prior as InstalledAddon & { isEnabled?: boolean }).isEnabled !== false }
+        : addon;
+    });
+    root.addons = applyRemovals(unionAddons(sharedInput, root.addons));
     const byProfile = objectRecord<InstalledAddon[]>(root.addonsByProfile);
     for (const [id, list] of Object.entries(byProfile)) byProfile[id] = applyRemovals(arrayValue<InstalledAddon>(list));
     root.addonsByProfile = byProfile;
     if (profileId) {
       const scoped = scopedValue<InstalledAddon[]>(root, "addonsByProfile", profileId);
-      setScopedValue(root, "addonsByProfile", profileId, applyRemovals(unionAddons(addons, scoped)));
+      setScopedValue(root, "addonsByProfile", profileId, applyRemovals(unionAddons(sharedInput, scoped)));
     }
     const existingMetaCache = objectRecord<Record<string, unknown>>(root.addonMetadataByKey);
     const nextMetaCache: Record<string, Record<string, unknown>> = { ...existingMetaCache };

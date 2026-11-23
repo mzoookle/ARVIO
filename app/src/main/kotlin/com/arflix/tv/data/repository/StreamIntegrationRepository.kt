@@ -450,10 +450,8 @@ class StreamIntegrationRepository @Inject constructor(
         }
 
         when {
-            id.startsWith("stremio:") -> {
-                val addonId = id.removePrefix("stremio:")
-                runCatching { streamRepositoryProvider.get().toggleAddon(addonId) }
-            }
+            // Stremio is already stored in providerEnabledKey(profileId, id) above.
+            // Do not toggle the account-shared Addon.isEnabled value here.
             id.startsWith("plugin_repo:") -> {
                 val repoId = id.removePrefix("plugin_repo:")
                 runCatching { pluginManagerProvider.get().toggleAllScrapersForRepo(repoId, newEnabled) }

@@ -179,10 +179,16 @@ export function useRefreshData(store: StoreCore) {
       // If the pull explicitly returned an EMPTY cloud list but we still hold
       // addons locally, the cloud is stale/partial — self-heal by pushing our
       // list back up instead of wiping.
-      const addonState = source.map((addon) => ({
-        ...addon,
-        enabled: !effectiveSettings.disabledAddonIds.includes(addon.id) && addon.enabled !== false
-      }));
+      const addonState = source.map((addon) => {
+        const override = effectiveSettings.streamProviderEnabledMap?.[`stremio:${addon.id}`];
+        return {
+          ...addon,
+          enabled: typeof override === "boolean" ? override :
+            !effectiveSettings.disabledAddonIds.includes(addon.id) && addon.enabled !== false,
+          isEnabled: typeof override === "boolean" ? override :
+            !effectiveSettings.disabledAddonIds.includes(addon.id) && addon.enabled !== false
+        };
+      });
       setAddons(addonState);
       setAddonsReady(true);
       // Only persist locally when we actually have addons — an empty list can't

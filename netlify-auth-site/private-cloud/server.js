@@ -1,6 +1,8 @@
 "use strict";
 const http = require("node:http");
 const path = require("node:path");
+const net = require("node:net");
+const releaseAdmin = require("./admin-release");
 
 const FUNCTIONS_DIR = path.resolve(__dirname, "../netlify/functions");
 const ROUTES = new Set([
@@ -13,11 +15,40 @@ const ROUTES = new Set([
   "tv-auth-start", "tv-auth-status", "tv-auth-poll", "tv-auth-complete", "tv-auth-approve", "tv-auth-web",
   "discord-auth-start", "discord-auth-status", "discord-auth-callback",
   "app-usage-event",
-    "admin-users", "admin-user", "admin-password-reset", "admin-profile-config", "admin-account-delete",
+  "admin-users", "admin-user", "admin-password-reset", "admin-account-delete", "admin-profile-config",
+  "admin-devices", "device-heartbeat", "admin-release",
   "oidc-start", "oidc-callback", "oidc-link-start", "auth-password-set",
-  "simkl-proxy", "trakt-proxy", "tmdb-proxy", "provider-coordinator"
+  "simkl-proxy", "trakt-proxy", "tmdb-proxy"
 ]);
 const MAX_BODY_BYTES = Number(process.env.ARVIO_MAX_BODY_BYTES || 5 * 1024 * 1024);
+const proxyAllowlist = new net.BlockList();
+for (const item of String(process.env.ARVIO_TRUSTED_PROXY_CIDRS || "").split(",").map(x=>x.trim()).filter(Boolean)) {
+  const [addr, prefix] = item.split("/");
+  const family = net.isIP(addr);
+  if (!family || (prefix !== undefined && !Number.isInteger(Number(prefix)))) throw new Error(`Bad trusted proxy CIDR: ${item}`);
+  if (prefix === undefined) proxyAllowlist.addAddress(addr, family === 4 ? "ipv4" : "ipv6");
+  else proxyAllowlist.addSubnet(addr,Number(prefix),family === 4 ? "ipv4" : "ipv6");
+}
+function normalizedIp(address) { return String(address || "").replace(/^::ffff:/, ""); }
+function isTrusted(address) {
+  const ip = normalizedIp(address), family=net.isIP(ip);
+  return Boolean(family && proxyAllowlist.check(ip,family===4?"ipv4":"ipv6"));
+}
+function requestIp(req) {
+  let address=normalizedIp(req.socket?.remoteAddress);
+  if(!isTrusted(address)) return net.isIP(address)?address:null;
+  // Work right-to-left, stopping at the nearest untrusted hop. Edge proxy must
+  // append/replace X-Forwarded-For; never trust client-controlled header alone.
+  const chain=String(req.headers["x-forwarded-for"]||"").split(",").map(x=>x.trim()).filter(Boolean);
+  for(let i=chain.length-1;i>=0;i--) {
+    const hop=normalizedIp(chain[i]);
+    if(!net.isIP(hop))return net.isIP(address)?address:null;
+    address=hop;
+    if(!isTrusted(address))break;
+  }
+  return net.isIP(address)?address:null;
+}
+
 
 function send(res, result) {
   const status = Number(result?.statusCode || 200);
@@ -57,6 +88,14 @@ async function dispatch(req, res) {
     res.end(JSON.stringify({ ok: true, service: "arvio-private-cloud" }));
     return;
   }
+  if (route === "admin-release-upload") {
+    await releaseAdmin.upload(req,res);
+    return;
+  }
+  if (route === "admin-release") {
+    send(res,await releaseAdmin.list({httpMethod:req.method,headers:req.headers}));
+    return;
+  }
   if (!ROUTES.has(route)) {
     res.writeHead(404, { "content-type": "application/json", "cache-control": "no-store" });
     res.end(JSON.stringify({ error: "not_found" }));
@@ -86,7 +125,8 @@ async function dispatch(req, res) {
       isBase64Encoded: false,
       path: url.pathname,
       rawUrl: req.url,
-      queryStringParameters: queryObject(url)
+      queryStringParameters: queryObject(url),
+      requestContext: { identity: { sourceIp: requestIp(req) } }
     };
     send(res, await mod.handler(event, {}));
   } catch (error) {

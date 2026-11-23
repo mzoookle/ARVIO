@@ -24,7 +24,7 @@
       <h1>Administrator sign in</h1>
       <p class="muted">Sign in with an account authorized by the Keycloak <code>/arvio</code> group or the server's administrator email allowlist.</p>
       <div class="status" id="oidcStatus" role="status"></div>
-      <button class="primary" id="keycloakLogin" type="button" style="width:100%;margin-bottom:16px">Sign in with Keycloak</button>
+      <button class="primary" id="keycloakLogin" type="button" style="width:100%;margin-bottom:16px">Sign in with SSO</button>
       <div class="muted" style="text-align:center;margin:8px 0">or use an ARVIO account</div>
       <form id="loginForm"><label for="email">Email</label><input id="email" type="email" autocomplete="username" required /><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required /><div class="status" id="loginStatus" role="status"></div><button class="primary" type="submit" style="width:100%">Sign in</button></form>
     </section>
@@ -32,6 +32,24 @@
       <div class="top"><div><h1 style="margin:0">User management</h1><div class="muted" id="adminIdentity"></div></div><button id="logout">Sign out</button></div>
       <div class="grid"><div class="stat"><strong id="totalUsers">—</strong><small>Total accounts</small></div><div class="stat"><strong id="withPassword">—</strong><small>Password enabled</small></div><div class="stat"><strong id="withSync">—</strong><small>Password setup needed</small></div></div>
       <section class="panel"><div class="toolbar"><input id="search" type="search" placeholder="Search users by email" /><button id="refresh">Refresh list</button></div><div class="status" id="listStatus" role="status"></div><div class="table-wrap"><table><thead><tr><th>Email</th><th>Created</th><th>Account</th><th>Keycloak</th><th>Actions</th></tr></thead><tbody id="usersBody"></tbody></table></div></section>
+      <section class="panel detail" id="releasePanel">
+        <div class="top"><div><h2 style="margin:0">Private Android releases</h2><div class="muted">Upload a signed APK and its offline-generated release attestation.</div></div><button id="refreshReleases" type="button">Refresh</button></div>
+        <div class="notice">Build and sign the APK on your own machine. The admin API never receives your Android signing key or attestation private key. Published APKs use the existing /updates/latest.json feed.</div>
+        <div id="releaseCurrent" class="muted">No release information loaded.</div>
+        <form id="releaseUploadForm">
+          <label for="releaseApk">Signed ARVIO Private APK</label><input type="file" accept=".apk,application/vnd.android.package-archive" id="releaseApk" required />
+          <label for="releaseAttestation">Matching signed attestation (.json from prepare_admin_upload.py)</label><input type="file" accept=".json,application/json" id="releaseAttestation" required />
+          <button class="primary" type="submit" id="releasePublish">Publish new release</button>
+        </form>
+        <p class="status" id="releaseStatus" role="status"></p>
+        <div class="muted" id="releaseHistory"></div>
+      </section>
+      <section class="panel detail" id="devicePanel">
+        <div class="top"><div><h2 style="margin:0">Android devices</h2><div class="muted">Account, device model, private app version, last-seen IP, and last check-in.</div></div><button id="refreshDevices" type="button">Refresh devices</button></div>
+        <p class="muted">Only the private APK reports inventory. IPs are observed by the server; VPN, NAT and reverse proxies may affect them. Device entries are retained until deleted or purged.</p>
+        <p id="deviceStatus" class="status" role="status"></p>
+        <div class="table-wrap"><table><thead><tr><th>Account / device</th><th>Version</th><th>Android</th><th>Last IP</th><th>Last seen</th><th>Action</th></tr></thead><tbody id="devicesBody"></tbody></table></div>
+      </section>
       <section id="userDetail" class="panel detail hidden"><div class="top"><div><h2 id="detailEmail" style="margin:0">User</h2><div class="muted">Account and sync overview</div></div><button id="closeDetail">Close</button></div><div class="detail-grid" id="detailGrid"></div><div style="margin-top:18px"><h3>Keycloak identity</h3><div class="detail-grid" id="oidcDetail"></div></div><div style="margin-top:18px"><h3>Profiles</h3><div id="profiles" class="detail-grid"></div></div>
         <section id="configEditor" class="config-editor hidden">
           <h3 style="margin-top:0">Profile configuration</h3>
@@ -57,6 +75,7 @@
   const ANON = String(window.ARVIO_APP_ANON_KEY || "");
   const $ = (id) => document.getElementById(id);
   let token = "";
+  let currentAdminEmail = "";
   let users = [];
   let selectedEmail = "";
   let configProfiles = [];
@@ -70,8 +89,76 @@
     if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
     return body;
   }
-  function showDashboard() { $("login").classList.add("hidden"); $("dashboard").classList.remove("hidden"); }
+  function showDashboard() { $("login").classList.add("hidden"); $("dashboard").classList.remove("hidden");
+    void loadReleases().then(loadDevices); }
   function showLogin() { $("dashboard").classList.add("hidden"); $("login").classList.remove("hidden"); }
+  let currentReleaseCode = 0;
+  async function loadReleases() {
+    try {
+      const data = await request("admin-release");
+      const release = data.latest;
+      currentReleaseCode = Number(release?.versionCode || 0);
+      $("releaseCurrent").textContent = release
+        ? `Current: ${release.versionName} (code ${release.versionCode}) · ${release.apkSizeBytes} bytes · SHA-256 ${release.sha256}`
+        : "No private Android release published yet.";
+      $("releaseHistory").textContent = `${(data.releases||[]).length} APK(s) in release storage`;
+    } catch(error) {setStatus("releaseStatus",error.message,"error");}
+  }
+  async function loadDevices() {
+    setStatus("deviceStatus", "Loading reported devices…");
+    try {
+      const result = await request("admin-devices");
+      const items = result.devices || [];
+      $("devicesBody").replaceChildren();
+      for(const d of items) {
+        const tr=document.createElement("tr");
+        const add=(value,css) => {const td=document.createElement("td");td.textContent=value; if(css)td.className=css;tr.append(td);return td;};
+        add(`${d.email} · ${d.deviceName || d.model || "Android device"}`);
+        const behind = currentReleaseCode > 0 && Number(d.versionCode) < currentReleaseCode;
+        add(`${d.versionName} (${d.versionCode})${behind?" · Update available":""}`,behind?"error":"success");
+        add(`${d.androidRelease || "—"} / API ${d.androidSdk ?? "—"}`);
+        add(d.lastIp || "—");
+        add(d.lastSeenAt?new Date(d.lastSeenAt).toLocaleString():"—");
+        const td=document.createElement("td");
+        const remove=document.createElement("button");remove.type="button";remove.className="danger";remove.textContent="Forget";
+        remove.addEventListener("click",async()=>{
+          if(!confirm(`Forget the device record for ${d.email} / ${d.deviceName}? The app will appear again on its next heartbeat.`))return;
+          try{await request("admin-devices",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({installationId:d.installationId,accountId:d.accountId})});await loadDevices();}
+          catch(e){setStatus("deviceStatus",e.message,"error");}
+        });td.append(remove);tr.append(td);$("devicesBody").append(tr);
+      }
+      setStatus("deviceStatus",`${items.length} registered installation${items.length===1?"":"s"} (last seen is not live online status).`,"success");
+    }catch(error){setStatus("deviceStatus",error.message,"error");}
+  }
+  async function uploadRelease(event) {
+    event.preventDefault();
+    const apk=$("releaseApk").files?.[0]; const attestation=$("releaseAttestation").files?.[0];
+    if(!apk||!attestation)return;
+    if(!confirm(`Publish ${apk.name} (${Math.ceil(apk.size/1048576)} MiB) to every private Android installation's update feed?`))return;
+    $("releasePublish").disabled=true;setStatus("releaseStatus","Uploading and validating release…");
+    try {
+      const raw=await attestation.text();
+      if(raw.length>6000)throw new Error("Attestation is too large");
+      const meta=JSON.parse(raw);
+      const payload=JSON.parse(atob(meta.payloadBase64));
+      if(payload.apkSizeBytes!==apk.size)throw new Error("APK size does not match the signed attestation");
+      if(currentReleaseCode && payload.versionCode<=currentReleaseCode)throw new Error("Release versionCode must increase");
+      const encoded=btoa(raw);
+      const res=await fetch(`${API}/admin-release-upload`,{
+        method:"POST", headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/vnd.android.package-archive",
+          "X-ARVIO-Attestation":encoded}, body:apk
+      });
+      const result=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(result.error||`Upload failed (${res.status})`);
+      setStatus("releaseStatus",`Published ${result.release.versionName} (code ${result.release.versionCode}). Devices will discover it on their next update check.`,"success");
+      await loadReleases();await loadDevices();
+      $("releaseUploadForm").reset();
+    }catch(error){setStatus("releaseStatus",error.message,"error");}
+    finally{$("releasePublish").disabled=false;}
+  }
+  $("refreshDevices").addEventListener("click",loadDevices);
+  $("refreshReleases").addEventListener("click",loadReleases);
+  $("releaseUploadForm").addEventListener("submit",uploadRelease);
   function consumeOidcSession() {
     const fragment = new URLSearchParams(location.hash.replace(/^#/, ""));
     const accessToken = fragment.get("access_token");
@@ -102,17 +189,22 @@
       const actions=document.createElement("td"); actions.className="actions";
       const view=document.createElement("button"); view.textContent="View"; view.addEventListener("click",()=>openUser(user.email));
       const reset=document.createElement("button"); reset.className="danger"; reset.textContent="Reset password"; reset.addEventListener("click",()=>resetPassword(user.email));
-      actions.append(view,reset); tr.append(email,created,status,oidc,actions); $("usersBody").append(tr);
+      const remove=document.createElement("button"); remove.className="danger"; remove.textContent="Delete account";
+      const isCurrentAdmin = user.email.toLowerCase() === currentAdminEmail;
+      remove.disabled = isCurrentAdmin;
+      remove.title = isCurrentAdmin ? "You cannot delete the account currently signed in to the admin dashboard." : "Permanently delete this account and its data";
+      remove.addEventListener("click",()=>deleteAccount(user.email));
+      actions.append(view,reset,remove); tr.append(email,created,status,oidc,actions); $("usersBody").append(tr);
     }
     if(!visible.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=5;td.textContent="No matching users.";td.className="muted";tr.append(td);$("usersBody").append(tr);}
   }
   const CONFIG_SECTIONS = {
     profileSettings: { label: "Playback & home servers", help: "Profile-scoped playback, subtitle, source-priority, and home-server connection settings. homeServerConnectionJson is the Android-compatible home-server connection record." },
-    addons: { label: "Add-ons / media sources", help: "Installed add-on records for this profile. Removing an entry creates an account-wide removal marker, matching ARVIO's existing add-on sync behavior." },
+    addons: { label: "Add-ons / media sources", help: "Installations and configured URLs are shared. Set enabled true/false to toggle this profile only. Removing a record uninstalls it for every profile." },
     iptv: { label: "IPTV providers & playlists", help: "Playlist URLs, EPGs, Stalker portals, favorites, hidden groups, ordering, and related IPTV state for this profile." },
     catalogs: { label: "Catalogs & visibility", help: "Catalog definitions and per-profile hidden catalog ID lists." },
     globalSettings: { label: "Account-wide preferences", help: "These settings are account-wide rather than profile-specific. Only the supported top-level ARVIO global settings are editable here." },
-    integrations: { label: "Tracking integrations", help: "Connection status for Trakt, SIMKL, WeTrakr, and MDBList plus profile tracking preferences. Provider credentials are deliberately hidden and cannot be edited here." }
+    integrations: { label: "Tracking integrations", help: "Trakt, SIMKL, and MDBList credentials and routing preferences for this profile. Values are sensitive; never paste this JSON into a public issue or chat." }
   };
   function currentConfigValue() {
     return configData?.config?.[$("configSection").value] ?? {};
@@ -159,6 +251,37 @@
     try { const result=await request("admin-password-reset",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email})}); $("temporaryPassword").textContent=result.temporaryPassword; $("resetResult").classList.remove("hidden"); $("resetResult").scrollIntoView({behavior:"smooth",block:"start"}); }
     catch(error){setStatus("listStatus",error.message,"error");}
   }
+  async function deleteAccount(email) {
+    if (email.toLowerCase() === currentAdminEmail) {
+      setStatus("listStatus", "You cannot delete the account currently signed in to the admin dashboard.", "error");
+      return;
+    }
+    const accepted = confirm(`PERMANENTLY DELETE ${email}?\n\nThis removes the ARVIO account, synced profiles/settings, linked Keycloak identity, refresh sessions, TV sessions, and associated private-cloud records. This cannot be undone.`);
+    if (!accepted) return;
+    const typed = prompt(`To confirm permanent deletion, type this exact email address:\n\n${email}`);
+    if (typed !== email) {
+      if (typed !== null) setStatus("listStatus", "Email confirmation did not match. Nothing was deleted.", "error");
+      return;
+    }
+    setStatus("listStatus", `Queuing permanent deletion for ${email}…`);
+    try {
+      const result = await request("admin-account-delete", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, confirmation: typed })
+      });
+      if (result.audit_warning) {
+        setStatus("listStatus", `Deletion queued for ${email}, but the audit log write reported a problem. Check API logs.`, "error");
+      } else {
+        setStatus("listStatus", `Deletion queued for ${email}. Access is being revoked and account data is being purged.`, "success");
+      }
+      if (selectedEmail === email) { selectedEmail = ""; $("userDetail").classList.add("hidden"); }
+      await loadUsers();
+    } catch (error) {
+      setStatus("listStatus", error.message === "cannot_delete_current_admin_account"
+        ? "You cannot delete the account currently signed in to the admin dashboard."
+        : error.message, "error");
+    }
+  }
   $("keycloakLogin").addEventListener("click",async()=>{
     setStatus("oidcStatus","Redirecting to Keycloak…");
     try {
@@ -184,10 +307,10 @@
   }
   $("loginForm").addEventListener("submit",async(event)=>{
     event.preventDefault(); setStatus("loginStatus","Signing in…");
-    try { const response=await fetch(`${API}/auth-login`,{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:`Bearer ${ANON}`},body:JSON.stringify({email:$('email').value,password:$('password').value})}); const data=await response.json().catch(()=>({})); if(!response.ok)throw new Error(data.error||"Sign in failed"); token=data.access_token||""; if(!token)throw new Error("Sign-in response did not include an access token."); $("adminIdentity").textContent=`Signed in as ${$('email').value.trim().toLowerCase()}`; await loadUsers(); showDashboard(); }
+    try { const response=await fetch(`${API}/auth-login`,{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:`Bearer ${ANON}`},body:JSON.stringify({email:$('email').value,password:$('password').value})}); const data=await response.json().catch(()=>({})); if(!response.ok)throw new Error(data.error||"Sign in failed"); token=data.access_token||""; if(!token)throw new Error("Sign-in response did not include an access token."); currentAdminEmail = $('email').value.trim().toLowerCase(); $("adminIdentity").textContent=`Signed in as ${currentAdminEmail}`; await loadUsers(); showDashboard(); }
     catch(error){token="";showLogin();setStatus("loginStatus",error.message,"error");}
   });
-  $("logout").addEventListener("click",()=>{token="";users=[];showLogin();$("password").value="";setStatus("loginStatus","Signed out.");setStatus("oidcStatus","Signed out.");});
+  $("logout").addEventListener("click",()=>{token="";currentAdminEmail="";users=[];showLogin();$("password").value="";setStatus("loginStatus","Signed out.");setStatus("oidcStatus","Signed out.");});
   $("refresh").addEventListener("click",()=>loadUsers().catch(error=>setStatus("listStatus",error.message,"error")));
   $("search").addEventListener("input",renderUsers);
   $("closeDetail").addEventListener("click",()=>$("userDetail").classList.add("hidden"));
@@ -200,7 +323,7 @@
   $("saveConfig").addEventListener("click",async()=>{
     let value; try{value=JSON.parse($("configJson").value);}catch(error){setStatus("configStatus",`Invalid JSON: ${error.message}`,"error");return;}
     const section=$("configSection").value, profileId=$("configProfile").value;
-    const message=section==="addons"?"Save these add-on changes? Any removed add-on will be removed from every profile on this account.":`Save ${CONFIG_SECTIONS[section].label} for this account?`;
+    const message=section==="addons"?"Save these add-on changes? Enabled/disabled applies only to the selected profile. Removing an add-on uninstalls it for every profile.":`Save ${CONFIG_SECTIONS[section].label} for this account?`;
     if(!confirm(message))return;
     setStatus("configStatus","Saving configuration…");$("saveConfig").disabled=true;
     try{

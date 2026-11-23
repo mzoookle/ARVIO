@@ -661,10 +661,22 @@ class StreamRepository @Inject constructor(
 
     // ========== Addon Management ==========
 
+    // The installed add-on records are shared by the account. Their effective enabled
+    // states are profile preferences, matching StreamIntegrationRepository's keys.
+    private fun profileAddonEnabledKey(profileId: String, addonId: String) =
+        profileManager.profileBooleanKeyFor(profileId, "stream_provider_enabled_stremio:$addonId")
+
+    private fun projectProfileAddons(addons: List<Addon>, prefs: Preferences, profileId: String): List<Addon> =
+        addons.map { addon ->
+            val override = prefs[profileAddonEnabledKey(profileId, addon.id)]
+            if (override == null) addon else addon.copy(isEnabled = override)
+        }
+
     val personalAddons: Flow<List<Addon>> =
-        context.streamDataStore.data.map { prefs ->
-            val addons = readSharedOrLegacyAddons(prefs) ?: getDefaultAddonList()
-            enforceOpenSubtitles(addons).map { sanitizeAddonDisplayName(it) }
+        combine(context.streamDataStore.data, context.settingsDataStore.data, profileManager.activeProfileId) { streamPrefs, settings, profileId ->
+            val addons = readSharedOrLegacyAddons(streamPrefs) ?: getDefaultAddonList()
+            projectProfileAddons(enforceOpenSubtitles(addons), settings, profileId)
+                .map { sanitizeAddonDisplayName(it) }
         }
 
     val installedAddons: Flow<List<Addon>> = if (!com.arflix.tv.BuildConfig.PARTNER_MANAGEMENT_ENABLED || partnerDelivery == null) {
@@ -757,13 +769,15 @@ class StreamRepository @Inject constructor(
         return merged.values.toList()
     }
 
+    /** Toggle one profile only; never rewrite the shared installation record. */
     suspend fun toggleAddon(addonId: String) {
-        val now = System.currentTimeMillis()
-        updateAddons { current ->
-            current.map { addon ->
-                if (addon.id == addonId) addon.copy(isEnabled = !addon.isEnabled, setupUpdatedAt = now) else addon
-            }
+        val addon = personalAddons.first().firstOrNull { it.id == addonId } ?: return
+        val profileId = profileManager.getProfileId()
+        context.settingsDataStore.edit { prefs ->
+            prefs[profileAddonEnabledKey(profileId, addonId)] = !addon.isEnabled
         }
+        synchronized(streamResultCache) { streamResultCache.clear() }
+        invalidationBus.markDirty(CloudSyncScope.PROFILE_SETTINGS, profileId, "toggle addon for profile")
     }
 
     private suspend fun hydrateCustomAddon(
@@ -1333,7 +1347,9 @@ class StreamRepository @Inject constructor(
         val prefs = context.streamDataStore.data.first()
         val stored = readSharedOrLegacyAddons(prefs)
             ?: parseAddons(prefs[addonsKeyFor(profileId)])
-        return enforceOpenSubtitles(stored ?: getDefaultAddonList()).map { sanitizeAddonDisplayName(it) }
+        val settings = context.settingsDataStore.data.first()
+        return projectProfileAddons(enforceOpenSubtitles(stored ?: getDefaultAddonList()), settings, profileId)
+            .map { sanitizeAddonDisplayName(it) }
     }
 
     suspend fun replaceAddonsForProfile(profileId: String, addons: List<Addon>) {

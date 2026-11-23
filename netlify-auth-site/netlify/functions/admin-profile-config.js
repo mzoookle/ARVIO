@@ -36,6 +36,13 @@ function profileExists(payload, profileId) {
 function selectedConfig(payload, profileId, providerStatuses = {}) {
   const profileSettings = object(payload.profileSettingsById)[profileId] || {};
   const addonsMap = object(payload.addonsByProfile);
+  const profileEnabled = object(profileSettings.streamProviderEnabledMap);
+  const installed = Array.isArray(addonsMap[profileId]) ? addonsMap[profileId] : (Array.isArray(payload.addons) ? payload.addons : []);
+  const effectiveAddons = installed.map((addon) => {
+    const override = profileEnabled[`stremio:${addon.id}`];
+    const enabled = typeof override === "boolean" ? override : (addon.enabled !== false && addon.isEnabled !== false);
+    return { ...addon, enabled, ...(addon.isEnabled !== undefined ? { isEnabled: enabled } : {}) };
+  });
   const catalogsMap = object(payload.catalogsByProfile);
   const iptvMap = object(payload.iptvByProfile);
   const tracking = { ...object(payload.mdbListSyncByProfile)[profileId] };
@@ -44,7 +51,7 @@ function selectedConfig(payload, profileId, providerStatuses = {}) {
   const trakt = object(payload.traktTokens)[profileId] || {};
   return {
     profileSettings: object(profileSettings),
-    addons: Array.isArray(addonsMap[profileId]) ? addonsMap[profileId] : (Array.isArray(payload.addons) ? payload.addons : []),
+    addons: effectiveAddons,
     iptv: object(iptvMap[profileId]),
     catalogs: {
       items: Array.isArray(catalogsMap[profileId]) ? catalogsMap[profileId] : [],
@@ -78,7 +85,7 @@ function validateAddons(value) {
   for (const addon of value) {
     if (!isObject(addon)) throw badRequest("invalid_addon_record");
     const id = String(addon.id || "").trim();
-    const manifestUrl = String(addon.manifestUrl || "").trim();
+    const manifestUrl = String(addon.manifestUrl || addon.url || "").trim();
     if (!id || id.length > 256 || !manifestUrl || manifestUrl.length > 4096) throw badRequest("addon_requires_id_and_manifest_url");
     let parsedUrl;
     try { parsedUrl = new URL(manifestUrl); } catch { throw badRequest("addon_manifest_url_must_be_http_or_https"); }
@@ -205,14 +212,42 @@ function applyAddons(payload, profileId, value, now) {
   now = Math.max(now, (Number(payload.addonsUpdatedAt) || 0) + 1);
   const map = object(payload.addonsByProfile);
   const previous = Array.isArray(map[profileId]) ? map[profileId] : [];
-  const incomingById = new Map(value.map((addon) => [String(addon.id), { ...addon, setupUpdatedAt: now }]));
+  const oldCanonical = new Map((Array.isArray(payload.addons) ? payload.addons : [])
+    .filter((addon) => addon && addon.id).map((addon) => [String(addon.id), addon]));
+  const profileMap = { ...object(payload.profileSettingsById) };
+  const profile = { ...object(profileMap[profileId]) };
+  const overrides = { ...object(profile.streamProviderEnabledMap) };
+  const incomingById = new Map();
+  for (const addon of value) {
+    const id = String(addon.id);
+    // The submitted enabled bit is a per-profile preference, never a shared
+    // installation update. The admin can enable a source in one profile even
+    // when the legacy global record is disabled.
+    // The JSON editor's `enabled` field is authoritative. Older Android
+    // records also carry `isEnabled`, which may be stale when an admin edits
+    // only `enabled` in the form.
+    const enabled = typeof addon.enabled === "boolean" ? addon.enabled : addon.isEnabled !== false;
+    overrides[`stremio:${id}`] = enabled;
+    const { enabled: _enabled, isEnabled: _isEnabled, ...installation } = addon;
+    const old = oldCanonical.get(id);
+    const sharedEnabled = old ? old.enabled !== false && old.isEnabled !== false : true;
+    incomingById.set(id, {
+      ...installation,
+      enabled: sharedEnabled,
+      ...(old?.isEnabled !== undefined ? { isEnabled: sharedEnabled } : {}),
+      setupUpdatedAt: now
+    });
+  }
+  profile.streamProviderEnabledMap = overrides;
+  profileMap[profileId] = profile;
+  payload.profileSettingsById = profileMap;
+  bump(payload, `p:${profileId}:streamProviderEnabledMap`,
+    nextTimestamp(payload, `p:${profileId}:`, ["streamProviderEnabledMap"], now));
+
   const removedIds = previous.map((addon) => String(addon?.id || "")).filter((id) => id && !incomingById.has(id));
   const changes = { ...object(payload.addonChanges) };
   for (const id of removedIds) changes[id] = { removed: true, updatedAt: now };
   for (const id of incomingById.keys()) changes[id] = { removed: false, updatedAt: now };
-
-  // The ARVIO sync contract treats addon removal as an explicit account-wide tombstone.
-  // Match that contract so a later device push cannot resurrect the removed source.
   if (removedIds.length) {
     const removed = new Set(removedIds);
     payload.addons = (Array.isArray(payload.addons) ? payload.addons : []).filter((addon) => !removed.has(String(addon?.id || "")));
@@ -221,8 +256,14 @@ function applyAddons(payload, profileId, value, now) {
       nextByProfile[id] = (Array.isArray(list) ? list : []).filter((addon) => !removed.has(String(addon?.id || "")));
     }
     payload.addonsByProfile = nextByProfile;
+    // Clean up removed source overrides for all profiles as a courtesy.
+    for (const settings of Object.values(profileMap)) {
+      if (settings && typeof settings === "object") {
+        const flags = object(settings.streamProviderEnabledMap);
+        for (const id of removedIds) delete flags[`stremio:${id}`];
+      }
+    }
   }
-
   const canonical = new Map((Array.isArray(payload.addons) ? payload.addons : []).map((addon) => [String(addon?.id || ""), addon]));
   for (const [id, addon] of incomingById) canonical.set(id, { ...(canonical.get(id) || {}), ...addon });
   payload.addons = [...canonical.values()].filter((addon) => addon && addon.id);

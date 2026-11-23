@@ -227,6 +227,7 @@ data class SettingsUiState(
     val autoPlayNext: Boolean = true,
     val autoPlaySingleSource: Boolean = true,
     val autoPlayMinQuality: String = "Any",
+    val autoPlaySourceTimeout: String = "Fast (2s)",
     val autoPlayMaxQuality: String = "Unlimited",
     val autoPlayMaxSizeGb: Int = 0,
     val dnsProvider: String = "System DNS",
@@ -591,6 +592,7 @@ class SettingsViewModel @Inject constructor(
     private fun autoPlaySingleSourceKeyFor(profileId: String) = profileManager.profileBooleanKeyFor(profileId, "auto_play_single_source")
     private fun autoPlayMinQualityKey() = profileManager.profileStringKey("auto_play_min_quality")
     private fun autoPlayMinQualityKeyFor(profileId: String) = profileManager.profileStringKeyFor(profileId, "auto_play_min_quality")
+    private fun autoPlaySourceTimeoutKey() = profileManager.profileStringKey("auto_play_source_timeout")
     private fun trailerAutoPlayKey() = profileManager.profileBooleanKey("trailer_auto_play")
     private fun trailerSoundEnabledKey() = profileManager.profileBooleanKey("trailer_sound_enabled")
     private fun addonStreamDetailsKey() = com.arflix.tv.util.addonStreamDetailsKey(profileManager.getProfileIdSync())
@@ -895,6 +897,7 @@ class SettingsViewModel @Inject constructor(
                 context.settingsDataStore.edit { it[autoPlayNextKey()] = true }
             }
             val autoPlayMinQuality = normalizeAutoPlayMinQuality(prefs[autoPlayMinQualityKey()])
+            val autoPlaySourceTimeout = normalizeAutoPlaySourceTimeout(prefs[autoPlaySourceTimeoutKey()])
             val autoPlayMaxQuality = AutoplayLimits.normalizeQuality(prefs[profileManager.profileStringKey("auto_play_max_quality")])
             val autoPlayMaxSizeGb = AutoplayLimits.normalizeSizeGb(prefs[profileManager.profileIntKey("auto_play_max_size_gb")] ?: 0)
             val trailerAutoPlay = prefs[trailerAutoPlayKey()] ?: true
@@ -977,10 +980,6 @@ class SettingsViewModel @Inject constructor(
             val isTrakt = traktRepository.hasTrakt()
             val isMdbList = mdbListRepository.isConnected()
             val isSimkl = simklAuthManager.isConnected()
-            try { weTrakr.refreshStatus(loadProfileId) }
-            catch (e: CancellationException) { throw e }
-            catch (_: Exception) { /* Preserve the last known provider status. */ }
-            val isWeTrakr = weTrakr.isConnected(loadProfileId)
             val trackingPreferences = syncProviderStore.getTrackingPreferences()
 
             if (profileManager.getProfileIdSync() != loadProfileId) return@launch
@@ -1025,6 +1024,7 @@ class SettingsViewModel @Inject constructor(
                 autoPlayNext = autoPlay,
                 autoPlaySingleSource = autoPlaySingleSource,
                 autoPlayMinQuality = autoPlayMinQuality,
+                autoPlaySourceTimeout = autoPlaySourceTimeout,
                 autoPlayMaxQuality = autoPlayMaxQuality,
                 autoPlayMaxSizeGb = autoPlayMaxSizeGb,
                 trailerAutoPlay = trailerAutoPlay,
@@ -1070,7 +1070,7 @@ class SettingsViewModel @Inject constructor(
                 mdbListCode = null,
                 mdbListUrl = null,
                 mdbListUsername = null,
-                isWeTrakrConnected = isWeTrakr,
+                isWeTrakrConnected = weTrakr.isConnected(),
                 weTrakrBusy = false, weTrakrCode = null,
                 isSimklConnected = isSimkl,
                 simklUsername = null,
@@ -2027,6 +2027,29 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun cycleAutoPlaySourceTimeout() {
+        if (!canManage("playback")) return
+        val options = listOf("Fast (2s)", "5s", "10s", "15s", "Wait for all")
+        val current = normalizeAutoPlaySourceTimeout(_uiState.value.autoPlaySourceTimeout)
+        val next = options[(options.indexOf(current) + 1) % options.size]
+        preferenceWriter.save(
+            autoPlaySourceTimeoutKey(), next,
+            { it.autoPlaySourceTimeout },
+            { state, value -> state.copy(autoPlaySourceTimeout = value) }
+        )
+    }
+
+    private fun normalizeAutoPlaySourceTimeout(raw: String?): String {
+        return when (raw?.trim()?.lowercase()) {
+            "fast", "fast (2s)", "2s" -> "Fast (2s)"
+            "5s" -> "5s"
+            "10s" -> "10s"
+            "15s" -> "15s"
+            "wait for all", "wait for all sources", "wait_all" -> "Wait for all"
+            else -> "Fast (2s)"
+        }
+    }
+
     fun toggleCardLayoutMode() {
         val next = if (_uiState.value.cardLayoutMode.equals("Poster", ignoreCase = true)) {
             CARD_LAYOUT_MODE_LANDSCAPE
@@ -2108,6 +2131,11 @@ class SettingsViewModel @Inject constructor(
         preferenceWriter.save(frameRateMatchingModeKey(), normalized, { it.frameRateMatchingMode }, { state, value -> state.copy(frameRateMatchingMode = value) })
     }
 
+    fun setComingUpOnHome(enabled: Boolean) {
+        if (!canManage("appearance")) return
+        preferenceWriter.save(comingUpOnHomeKey(), enabled, { it.comingUpOnHome }, { state, value -> state.copy(comingUpOnHome = value) })
+    }
+
     private fun normalizeFrameRateMode(raw: String?): String {
         return when (raw?.trim()?.lowercase()) {
             "off" -> "Off"
@@ -2173,11 +2201,6 @@ class SettingsViewModel @Inject constructor(
     fun setWatchlistOnHome(enabled: Boolean) {
         if (!canManage("appearance")) return
         preferenceWriter.save(watchlistOnHomeKey(), enabled, { it.watchlistOnHome }, { state, value -> state.copy(watchlistOnHome = value) })
-    }
-
-    fun setComingUpOnHome(enabled: Boolean) {
-        if (!canManage("appearance")) return
-        preferenceWriter.save(comingUpOnHomeKey(), enabled, { it.comingUpOnHome }, { state, value -> state.copy(comingUpOnHome = value) })
     }
 
     fun cycleGuideRowCount() {
@@ -5176,8 +5199,7 @@ class SettingsViewModel @Inject constructor(
             updatePreferences.setLastCheckAtMs(System.currentTimeMillis())
 
             result.onSuccess { update ->
-                val localVer = appUpdateRepository.getInstalledVersionName()
-                val isNewer = com.arflix.tv.updater.VersionUtils.isRemoteNewer(update.tag, localVer)
+                val isNewer = appUpdateRepository.isNewer(update)
 
                 if (isNewer) {
                     updateStatusManager.updateStatus(com.arflix.tv.updater.UpdateStatus.UpdateAvailable(update))
@@ -5243,7 +5265,7 @@ class SettingsViewModel @Inject constructor(
             val dest = File(File(context.cacheDir, "updates"), safeName)
 
             val result = withContext(Dispatchers.IO) {
-                apkDownloader.download(update.assetUrl, dest) { downloaded, total ->
+                apkDownloader.download(update.assetUrl, dest, update.sha256) { downloaded, total ->
                     val progress = if (total != null && total > 0L) {
                         (downloaded.toFloat() / total.toFloat()).coerceIn(0f, 1f)
                     } else null

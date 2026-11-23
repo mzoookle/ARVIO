@@ -681,6 +681,7 @@ class PlayerViewModel @Inject constructor(
     private val subtitleMenuCandidates = linkedMapOf<String, Subtitle>()
     private fun frameRateMatchingModeKey() = profileManager.profileStringKey("frame_rate_matching_mode")
     private fun autoPlayNextKey() = profileManager.profileBooleanKey("auto_play_next")
+    private fun autoPlaySourceTimeoutKey() = profileManager.profileStringKey("auto_play_source_timeout")
     private fun showLoadingStatsKey() = profileManager.profileBooleanKey("show_loading_stats")
     private val gson = Gson()
     private val knownLanguageCodes = setOf(
@@ -1621,7 +1622,9 @@ class PlayerViewModel @Inject constructor(
                 // install a streaming addon whenever a search came back empty.
                 val hasIptvVodProviders = streamRepository.hasIptvVodProviders()
                 val HOME_SERVER_AUTOPLAY_WAIT_MS = 850L
-                val AUTOPLAY_MAX_WINDOW_MS = 1_750L
+                val autoPlaySourceTimeoutSetting = prefs[autoPlaySourceTimeoutKey()] ?: "Fast (2s)"
+                val maxWaitMs = com.arflix.tv.ui.screens.details.parseAutoplayTimeoutMs(autoPlaySourceTimeoutSetting)
+                val isFastAutoplayMode = com.arflix.tv.ui.screens.details.isFastAutoplayTimeout(autoPlaySourceTimeoutSetting)
                 val AUTOPLAY_QUALITY_WINDOW_MS = 180L
                 val collectionStartMs = System.currentTimeMillis()
                 var autoplaySelected = false
@@ -1765,7 +1768,7 @@ class PlayerViewModel @Inject constructor(
                     val holdForRecentSource = recentSourceGate.isHolding(recentSourceClock())
                     val recentAutoplayStream = recentSourceGate.recentCandidate(autoplayStreams)
                     if (!autoplaySelected && autoplayStreams.isNotEmpty() && autoplayDeferredJob == null &&
-                        !holdForRecentSource && canStartAutoplay()
+                        !holdForRecentSource && canStartAutoplay() && isFastAutoplayMode
                     ) {
                         autoplayDeferredJob = launch {
                             delay(AUTOPLAY_QUALITY_WINDOW_MS)
@@ -1799,15 +1802,19 @@ class PlayerViewModel @Inject constructor(
                     }
                     val autoplayTopStream = pickAutoplayTopStream(autoplayStreams, preferredLanguage)
                     val hasRequestedPreferredStream = hasRequestedPreferredStream(autoplayStreams)
+                    val searchComplete = progressive.isFinal && !supplementalSourcesStillLoading
+                    val timeExpired = elapsedMs >= maxWaitMs
                     val shouldSelectNow = !autoplaySelected && autoplayStreams.isNotEmpty() && canStartAutoplay() && homeServerReadyForAutoplay && (
                         recentAutoplayStream != null || (
                             !holdForRecentSource && (
-                                cacheHit ||
-                                    progressive.isFinal ||
-                                    hasCachedReadyStream ||
-                                    hasRequestedPreferredStream ||
-                                    isExcellentAutoplayCandidate(autoplayTopStream) ||
-                                    elapsedMs >= AUTOPLAY_MAX_WINDOW_MS
+                                searchComplete ||
+                                    timeExpired ||
+                                    (isFastAutoplayMode && (
+                                        cacheHit ||
+                                            hasCachedReadyStream ||
+                                            hasRequestedPreferredStream ||
+                                            isExcellentAutoplayCandidate(autoplayTopStream)
+                                        ))
                                 )
                             )
                         )

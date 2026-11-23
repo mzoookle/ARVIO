@@ -198,4 +198,23 @@ class AutoPlaySourcePlannerTest {
         assertEquals(cached, bestAutoPlayStream(listOf(uncached, cached), minQualityScore = 0))
         assertEquals(listOf(cached), eligiblePlayerAutoplayStreams(listOf(uncached, cached), minimumQuality = 0))
     }
+
+    @Test
+    fun `parseAutoplayTimeoutMs handles fast, timed, and wait for all settings`() {
+        assertEquals(1_750L, parseAutoplayTimeoutMs("Fast (2s)"))
+        assertEquals(1_750L, parseAutoplayTimeoutMs(null))
+        assertEquals(5_000L, parseAutoplayTimeoutMs("5s"))
+        assertEquals(10_000L, parseAutoplayTimeoutMs("10s"))
+        assertEquals(15_000L, parseAutoplayTimeoutMs("15s"))
+        assertEquals(30_000L, parseAutoplayTimeoutMs("Wait for all"))
+    }
+
+    @Test
+    fun `isFastAutoplayTimeout correctly identifies fast mode`() {
+        assertTrue(isFastAutoplayTimeout("Fast (2s)"))
+        assertTrue(isFastAutoplayTimeout("2s"))
+        assertTrue(isFastAutoplayTimeout(null))
+        assertFalse(isFastAutoplayTimeout("5s"))
+        assertFalse(isFastAutoplayTimeout("Wait for all"))
+    }
 }

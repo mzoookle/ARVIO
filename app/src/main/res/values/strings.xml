@@ -146,6 +146,7 @@
     <string name="auto_play_min_quality">Auto-Play Min Quality</string>
     <string name="auto_play_max_quality">Auto-Play Max Quality</string>
     <string name="auto_play_max_size">Auto-Play Max File Size</string>
+    <string name="auto_play_source_timeout" tools:ignore="MissingTranslation">Autoplay Source Timeout</string>
     <string name="autoplay_unlimited">Unlimited</string>
     <string name="trailer_auto_play">Trailer Auto-Play</string>
     <string name="frame_rate">Match Frame Rate</string>
@@ -195,6 +196,7 @@
     <string name="auto_play_desc">Start next episode automatically</string>
     <string name="autoplay_desc">Off opens the source picker on Play</string>
     <string name="auto_play_quality_desc">Min quality for auto-play</string>
+    <string name="auto_play_source_timeout_desc" tools:ignore="MissingTranslation">How long autoplay waits for all sources to return</string>
     <string name="trailer_desc">TV: automatically preview trailers on Home</string>
     <string name="trailer_sound">Trailer Sound</string>
     <string name="trailer_sound_desc">TV: enable audio for Home trailer previews</string>
