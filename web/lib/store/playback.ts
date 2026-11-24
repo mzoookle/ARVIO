@@ -17,7 +17,7 @@ import { reportHomeServerPlayback } from "../homeServerPlayback";
 import { buildXtreamCatchupUrl } from "../iptv";
 import { recordTvPlayback } from "../iptvSession";
 import { getDetails, getSeasonEpisodes } from "../tmdb";
-import { kidsLevelOf } from "../kids";
+import { canProfileOpenLiveTv } from "../kidsLiveTv";
 import type { IptvChannel, IptvProgram, MediaItem, StreamSource } from "../types";
 import { authClient } from "./clients";
 import { nextLocalEpisode } from "./watchHistory";
@@ -274,8 +274,8 @@ export function usePlaybackActions(store: StoreCore & Pick<ReturnType<typeof use
   }, []);
 
   const playChannel = useCallback(async (channel: IptvChannel) => {
-    // Live TV carries no age ratings: a kids profile never plays it.
-    if (kidsLevelOf(activeProfileRef.current)) { setToast("Not available on this kids profile"); return; }
+    // Channel playback must use the same parental gate as the TV navigation.
+    if (!canProfileOpenLiveTv(activeProfileRef.current)) { setToast("Not available on this kids profile"); return; }
     if (!premiumAllows("live", () => { void playChannel(channel); })) return;
     playbackPreparation.current?.abort();
     stopOwnedPlayback();
@@ -306,7 +306,7 @@ export function usePlaybackActions(store: StoreCore & Pick<ReturnType<typeof use
   // seekable VOD stream (no activeChannel → scrubber works), but the player
   // still gives it the IPTV proxy ladder via the "Catch-up" addonName marker.
   const playCatchup = useCallback((channel: IptvChannel, program: IptvProgram) => {
-    if (kidsLevelOf(activeProfileRef.current)) { setToast("Not available on this kids profile"); return; }
+    if (!canProfileOpenLiveTv(activeProfileRef.current)) { setToast("Not available on this kids profile"); return; }
     if (!premiumAllows("live", () => playCatchup(channel, program))) return;
     playbackPreparation.current?.abort();
     stopOwnedPlayback();

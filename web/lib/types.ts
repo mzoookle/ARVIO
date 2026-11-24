@@ -317,6 +317,8 @@ export interface Profile {
   avatarImageVersion?: number; // 0 = no custom uploaded photo
   avatarImageStoragePath?: string | null;
   isKidsProfile?: boolean;
+  /** Android Profile.allowKidsLiveTv: explicit parent opt-in; missing/null means disabled for kids. */
+  allowKidsLiveTv?: boolean | null;
   // KidsAgeLevel name (LITTLE_KIDS | OLDER_KIDS | TEENS); missing reads as the default.
   kidsAgeLevel?: string | null;
   // The kids starter rows were added once; a row the parent removed must not come back.

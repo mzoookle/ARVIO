@@ -5,7 +5,7 @@ import { useTranslation } from "@/lib/i18n";
 import { ACCENTS, ACCENT_NAMES } from "@/lib/accents";
 import { isLinux, isMac, isWindows, setVlcProtocolReady, triggerDownload, vlcProtocolReady, VLC_SETUP_SH_URL, VLC_SETUP_URL } from "@/lib/externalPlayers";
 import { useAppPick } from "@/lib/store";
-import { kidsLevelOf } from "@/lib/kids";
+import { canProfileOpenLiveTv } from "@/lib/kidsLiveTv";
 import { navigationSectionVisible, withNavigationSectionVisible } from "@/lib/navigationVisibility";
 import { DownloadsPanel } from "../DownloadsPanel";
 import { Group, Row, Segmented, Select, SectionHeader, Status, Swatches, TextInput, Toggle } from "../ui";
@@ -51,7 +51,7 @@ export function AppearanceSection() {
           <Toggle label="Show Library" value={navigationSectionVisible("watchlist", settings.hiddenNavigationSections)}
             onChange={(visible) => set({ hiddenNavigationSections: withNavigationSectionVisible(settings.hiddenNavigationSections, "watchlist", visible) })} />
         </Row>
-        {!kidsLevelOf(activeProfile) && <Row id="navigation-tv" label="Show TV Player" scope="all">
+        {canProfileOpenLiveTv(activeProfile) && <Row id="navigation-tv" label="Show TV Player" scope="all">
           <Toggle label="Show TV Player" value={navigationSectionVisible("tv", settings.hiddenNavigationSections)}
             onChange={(visible) => set({ hiddenNavigationSections: withNavigationSectionVisible(settings.hiddenNavigationSections, "tv", visible) })} />
         </Row>}

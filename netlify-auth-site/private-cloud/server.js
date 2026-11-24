@@ -18,7 +18,7 @@ const ROUTES = new Set([
   "admin-users", "admin-user", "admin-password-reset", "admin-account-delete", "admin-profile-config",
   "admin-devices", "device-heartbeat", "admin-release",
   "oidc-start", "oidc-callback", "oidc-link-start", "auth-password-set",
-  "simkl-proxy", "trakt-proxy", "tmdb-proxy"
+  "simkl-proxy", "trakt-proxy", "tmdb-proxy", "provider-coordinator"
 ]);
 const MAX_BODY_BYTES = Number(process.env.ARVIO_MAX_BODY_BYTES || 5 * 1024 * 1024);
 const proxyAllowlist = new net.BlockList();

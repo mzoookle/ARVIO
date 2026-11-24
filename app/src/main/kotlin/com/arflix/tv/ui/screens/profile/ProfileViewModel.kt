@@ -56,6 +56,7 @@ data class ProfileUiState(
     val useCustomAvatarImage: Boolean = false,
     val isKidsProfile: Boolean = false,
     val kidsAgeLevel: KidsAgeLevel = KidsAgeLevel.DEFAULT,
+    val allowKidsLiveTv: Boolean = false,
     // Hashed parent PIN chosen in this dialog, before the profile is saved with it.
     val pendingParentPin: String? = null,
     // Edit profile dialog state
@@ -313,6 +314,7 @@ class ProfileViewModel @Inject constructor(
             useCustomAvatarImage = false,
             isKidsProfile = false,
             kidsAgeLevel = KidsAgeLevel.DEFAULT,
+            allowKidsLiveTv = false,
             pendingParentPin = null
         )
     }
@@ -358,7 +360,14 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun setKidsProfile(enabled: Boolean) {
-        _uiState.value = _uiState.value.copy(isKidsProfile = enabled)
+        _uiState.value = _uiState.value.copy(
+            isKidsProfile = enabled,
+            allowKidsLiveTv = if (enabled) _uiState.value.allowKidsLiveTv else false
+        )
+    }
+
+    fun setAllowKidsLiveTv(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(allowKidsLiveTv = enabled)
     }
 
     fun setKidsAgeLevel(level: KidsAgeLevel) {
@@ -380,7 +389,8 @@ class ProfileViewModel @Inject constructor(
                 avatarId = state.selectedAvatarId,
                 isKidsProfile = state.isKidsProfile,
                 kidsAgeLevel = state.kidsAgeLevel.name.takeIf { state.isKidsProfile },
-                parentPin = state.pendingParentPin.takeIf { state.isKidsProfile }
+                parentPin = state.pendingParentPin.takeIf { state.isKidsProfile },
+                allowKidsLiveTv = state.isKidsProfile && state.allowKidsLiveTv
             )
             val selectedImage = state.selectedAvatarImageUri
             if (state.useCustomAvatarImage && !selectedImage.isNullOrBlank()) {
@@ -433,6 +443,7 @@ class ProfileViewModel @Inject constructor(
                 useCustomAvatarImage = profile.avatarImageVersion > 0L,
                 isKidsProfile = profile.isKidsProfile,
                 kidsAgeLevel = KidsAgeLevel.fromName(profile.kidsAgeLevel),
+                allowKidsLiveTv = profile.allowKidsLiveTv == true,
                 pendingParentPin = null
             )
         }
@@ -458,6 +469,7 @@ class ProfileViewModel @Inject constructor(
                 avatarId = state.selectedAvatarId,
                 isKidsProfile = state.isKidsProfile,
                 kidsAgeLevel = state.kidsAgeLevel.name.takeIf { state.isKidsProfile },
+                allowKidsLiveTv = state.isKidsProfile && state.allowKidsLiveTv,
                 // Turning kids mode off (reachable only through the parent PIN) drops the PIN.
                 parentPin = if (state.isKidsProfile) state.pendingParentPin ?: editing.parentPin else null
             )
@@ -595,6 +607,7 @@ class ProfileViewModel @Inject constructor(
                         useCustomAvatarImage = profile.avatarImageVersion > 0L,
                         isKidsProfile = profile.isKidsProfile,
                         kidsAgeLevel = KidsAgeLevel.fromName(profile.kidsAgeLevel),
+                        allowKidsLiveTv = profile.allowKidsLiveTv == true,
                         pendingParentPin = null
                     )
                 }

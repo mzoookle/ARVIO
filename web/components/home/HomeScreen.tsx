@@ -18,6 +18,7 @@ import { HOME_WATCHLIST_ROW_ID, withHomeWatchlistRow } from "@/lib/homeRows";
 import { requestPlayOnOpen } from "@/lib/playIntent";
 import { useAppPick } from "@/lib/store";
 import { useKidsFilter } from "@/lib/useKids";
+import { canProfileOpenLiveTv } from "@/lib/kidsLiveTv";
 import { LazyRail, type LazyRailOutcome } from "@/components/media/LazyRail";
 import { CustomCollectionRail } from "@/components/media/CustomCollectionRail";
 import { MediaRail } from "@/components/media/MediaRail";
@@ -36,13 +37,14 @@ export function HomeScreen({ onCollectionOpenChange }: { onCollectionOpenChange?
   const translateUi = useTranslation();
   const {
     categories, catalogConfigs, homeServerRows, continueWatching, watchlist, openDetails,
-    settings, addons, favoriteTvChannels, setSection, updateSettings
+    settings, addons, favoriteTvChannels, setSection, updateSettings, activeProfile
   } = useAppPick(
     "categories", "catalogConfigs", "homeServerRows", "continueWatching", "watchlist",
-    "openDetails", "settings", "addons", "favoriteTvChannels", "setSection", "updateSettings"
+    "openDetails", "settings", "addons", "favoriteTvChannels", "setSection", "updateSettings", "activeProfile"
   );
   const posterMode = settings.cardLayoutMode === "poster";
   const kids = useKidsFilter();
+  const canOpenLiveTv = canProfileOpenLiveTv(activeProfile);
   const kidsAllows = useRef(kids.allows);
   kidsAllows.current = kids.allows;
 
@@ -155,7 +157,7 @@ export function HomeScreen({ onCollectionOpenChange }: { onCollectionOpenChange?
   });
   const heroLoading = !heroSeeded && !hasHeroFallback && (eagerLazyIds.length > 0 ? eagerLazyPending : collectionHeroLoading);
   const heroRendered = heroSeeded || hasHeroFallback || heroLoading;
-  const hasFavoriteTv = !kids.active && favoriteTvChannels.length > 0;
+  const hasFavoriteTv = canOpenLiveTv && favoriteTvChannels.length > 0;
   const hasMountedRows = dedupedCategories.length > 0 || homeServerRows.length > 0 || hasFavoriteTv
     || homeCatalogs.some((catalog) =>
       catalog.id !== FAVORITE_TV_CATALOG_ID &&
@@ -216,7 +218,7 @@ export function HomeScreen({ onCollectionOpenChange }: { onCollectionOpenChange?
       })}
       {/* Each row is isolated: one that throws drops out instead of taking Home down. */}
       {homeCatalogs.map((catalog, index) => <RowBoundary key={catalog.id} name={catalog.id} resetKey={catalog}>{
-        catalog.id === FAVORITE_TV_CATALOG_ID ? (kids.active ? null : <FavoriteTvRail title={catalog.name} />) :
+        catalog.id === FAVORITE_TV_CATALOG_ID ? (!canOpenLiveTv ? null : <FavoriteTvRail title={catalog.name} />) :
         String(catalog.kind).toUpperCase() === "COLLECTION_RAIL" ?
         <CustomCollectionRail catalog={catalog} onOpen={openDetails} onCollectionOpenChange={onCollectionOpenChange}
           folders={collectionFolders(catalog, catalogConfigs)} /> :
@@ -231,7 +233,7 @@ export function HomeScreen({ onCollectionOpenChange }: { onCollectionOpenChange?
         />
       }</RowBoundary>)}
       {/* Like Android, a catalog list without the row still shows it, after the others. */}
-      {!kids.active && !catalogConfigs.some((catalog) => catalog.id === FAVORITE_TV_CATALOG_ID) && <FavoriteTvRail />}
+      {canOpenLiveTv && !catalogConfigs.some((catalog) => catalog.id === FAVORITE_TV_CATALOG_ID) && <FavoriteTvRail />}
       {homeServerRows.map((category) => (
         <RowBoundary key={category.id} name={category.id} resetKey={category.items}>
           <MediaRail category={category} onOpen={openDetails} onFocus={onCardFocus} posterMode={posterMode} />

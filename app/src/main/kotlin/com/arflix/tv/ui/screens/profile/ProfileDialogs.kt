@@ -121,6 +121,8 @@ fun AddProfileDialog(
     onKidsProfileChange: (Boolean) -> Unit = {},
     kidsAgeLevel: KidsAgeLevel = KidsAgeLevel.DEFAULT,
     onKidsAgeLevelChange: (KidsAgeLevel) -> Unit = {},
+    allowKidsLiveTv: Boolean = false,
+    onAllowKidsLiveTvChange: (Boolean) -> Unit = {},
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -141,6 +143,8 @@ fun AddProfileDialog(
         onKidsProfileChange = onKidsProfileChange,
         kidsAgeLevel = kidsAgeLevel,
         onKidsAgeLevelChange = onKidsAgeLevelChange,
+        allowKidsLiveTv = allowKidsLiveTv,
+        onAllowKidsLiveTvChange = onAllowKidsLiveTvChange,
         confirmLabel = stringResource(R.string.confirm),
         onConfirm = onConfirm,
         onDismiss = onDismiss,
@@ -170,6 +174,8 @@ fun EditProfileDialog(
     onKidsProfileChange: (Boolean) -> Unit = {},
     kidsAgeLevel: KidsAgeLevel = KidsAgeLevel.DEFAULT,
     onKidsAgeLevelChange: (KidsAgeLevel) -> Unit = {},
+    allowKidsLiveTv: Boolean = false,
+    onAllowKidsLiveTvChange: (Boolean) -> Unit = {},
     onConfirm: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
@@ -193,6 +199,8 @@ fun EditProfileDialog(
         onKidsProfileChange = onKidsProfileChange,
         kidsAgeLevel = kidsAgeLevel,
         onKidsAgeLevelChange = onKidsAgeLevelChange,
+        allowKidsLiveTv = allowKidsLiveTv,
+        onAllowKidsLiveTvChange = onAllowKidsLiveTvChange,
         confirmLabel = stringResource(R.string.save),
         onConfirm = onConfirm,
         onDismiss = onDismiss,
@@ -226,6 +234,8 @@ private fun ProfileDialogContent(
     onKidsProfileChange: (Boolean) -> Unit,
     kidsAgeLevel: KidsAgeLevel,
     onKidsAgeLevelChange: (KidsAgeLevel) -> Unit,
+    allowKidsLiveTv: Boolean,
+    onAllowKidsLiveTvChange: (Boolean) -> Unit,
     confirmLabel: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
@@ -483,7 +493,9 @@ private fun ProfileDialogContent(
                                 onKidsProfileChange(it)
                             },
                             kidsAgeLevel = kidsAgeLevel,
-                            onKidsAgeLevelChange = onKidsAgeLevelChange
+                            onKidsAgeLevelChange = onKidsAgeLevelChange,
+                            allowKidsLiveTv = allowKidsLiveTv,
+                            onAllowKidsLiveTvChange = onAllowKidsLiveTvChange
                         )
 
                         // 4. Profile Lock (Optimized Mobile Card)
@@ -719,7 +731,9 @@ private fun ProfileDialogContent(
                                 onKidsProfileChange(it)
                             },
                             kidsAgeLevel = kidsAgeLevel,
-                            onKidsAgeLevelChange = onKidsAgeLevelChange
+                            onKidsAgeLevelChange = onKidsAgeLevelChange,
+                            allowKidsLiveTv = allowKidsLiveTv,
+                            onAllowKidsLiveTvChange = onAllowKidsLiveTvChange
                         )
                         Spacer(modifier = Modifier.height(12.dp))
 
@@ -952,7 +966,9 @@ private fun MobileKidsProfileControls(
     isKidsProfile: Boolean,
     onKidsProfileChange: (Boolean) -> Unit,
     kidsAgeLevel: KidsAgeLevel,
-    onKidsAgeLevelChange: (KidsAgeLevel) -> Unit
+    onKidsAgeLevelChange: (KidsAgeLevel) -> Unit,
+    allowKidsLiveTv: Boolean,
+    onAllowKidsLiveTvChange: (Boolean) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -1049,6 +1065,47 @@ private fun MobileKidsProfileControls(
                     }
                 }
             }
+
+            // This toggle is only reachable through Manage Profiles. Existing kids
+            // profiles require their parent PIN before opening this editor.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onAllowKidsLiveTvChange(!allowKidsLiveTv) }
+                    .padding(vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.profile_kids_allow_live_tv),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = stringResource(R.string.profile_kids_allow_live_tv_desc),
+                        fontSize = 11.sp,
+                        color = TextSecondary,
+                        lineHeight = 15.sp
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Box(
+                    modifier = Modifier
+                        .width(44.dp)
+                        .height(24.dp)
+                        .background(
+                            if (allowKidsLiveTv) SuccessGreen else Color.White.copy(alpha = 0.2f),
+                            RoundedCornerShape(16.dp)
+                        )
+                        .padding(3.dp),
+                    contentAlignment = if (allowKidsLiveTv) Alignment.CenterEnd else Alignment.CenterStart
+                ) {
+                    Box(Modifier.size(18.dp).background(Color.White, RoundedCornerShape(12.dp)))
+                }
+            }
         }
     }
 }
@@ -1122,7 +1179,9 @@ private fun KidsProfileControls(
     isKidsProfile: Boolean,
     onKidsProfileChange: (Boolean) -> Unit,
     kidsAgeLevel: KidsAgeLevel,
-    onKidsAgeLevelChange: (KidsAgeLevel) -> Unit
+    onKidsAgeLevelChange: (KidsAgeLevel) -> Unit,
+    allowKidsLiveTv: Boolean,
+    onAllowKidsLiveTvChange: (Boolean) -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -1172,6 +1231,30 @@ private fun KidsProfileControls(
                     modifier = Modifier.width(88.dp)
                 )
             }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.profile_kids_allow_live_tv),
+                    fontSize = 12.sp,
+                    color = Color(0xFFB0B0B0),
+                    modifier = Modifier.weight(1f).padding(start = 4.dp)
+                )
+                DialogButton(
+                    text = stringResource(if (allowKidsLiveTv) R.string.profile_kids_on else R.string.profile_kids_off),
+                    isPrimary = allowKidsLiveTv,
+                    onClick = { onAllowKidsLiveTvChange(!allowKidsLiveTv) },
+                    modifier = Modifier.width(88.dp)
+                )
+            }
+            Text(
+                text = stringResource(R.string.profile_kids_allow_live_tv_desc),
+                fontSize = 11.sp,
+                color = Color.White.copy(alpha = 0.5f),
+                modifier = Modifier.padding(start = 4.dp)
+            )
             Text(
                 text = stringResource(R.string.profile_kids_hint),
                 fontSize = 11.sp,

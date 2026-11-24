@@ -101,6 +101,7 @@ export function makeProfile(name: string, avatarColor: number, avatarId = 0): Pr
     avatarId,
     avatarImageVersion: 0,
     isKidsProfile: false,
+    allowKidsLiveTv: false,
     pin: null,
     isLocked: false,
     createdAt: now,

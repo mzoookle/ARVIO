@@ -28,8 +28,14 @@ data class Profile(
     // When the profile itself was last edited (name, avatar, PIN, kids settings). Selecting a
     // profile does not count. Lets the cloud merge keep the newer copy (ProfileListMerge).
     // Nullable: profiles saved before it existed decode it as null, read as "oldest".
-    val updatedAt: Long? = null
+    val updatedAt: Long? = null,
+    // Parent-approved opt-in for Live TV. Null covers older Gson-backed profiles.
+    val allowKidsLiveTv: Boolean? = null
 ) {
+    /** Live TV has no content ratings. For kids it is available only by explicit parent opt-in. */
+    val canOpenLiveTv: Boolean
+        get() = !isKidsProfile || allowKidsLiveTv == true
+
     /** The age cap this profile enforces, or null for a regular profile. */
     val kidsLevel: KidsAgeLevel?
         get() = if (isKidsProfile) KidsAgeLevel.fromName(kidsAgeLevel) else null

@@ -7,8 +7,8 @@ export function normalizedHiddenNavigationSections(value: unknown): OptionalNavi
   return OPTIONAL_NAVIGATION_SECTIONS.filter((section) => Array.isArray(value) && value.includes(section));
 }
 
-export function navigationSectionVisible(section: string, hidden: unknown, isKids = false): boolean {
-  return !normalizedHiddenNavigationSections(hidden).includes(section as OptionalNavigationSection) && !(isKids && section === "tv");
+export function navigationSectionVisible(section: string, hidden: unknown, isKids = false, allowKidsLiveTv = false): boolean {
+  return !normalizedHiddenNavigationSections(hidden).includes(section as OptionalNavigationSection) && !(isKids && !allowKidsLiveTv && section === "tv");
 }
 
 export function withNavigationSectionVisible(hidden: unknown, section: OptionalNavigationSection, visible: boolean): OptionalNavigationSection[] {

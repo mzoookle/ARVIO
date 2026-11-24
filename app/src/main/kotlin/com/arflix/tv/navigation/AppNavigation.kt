@@ -240,11 +240,12 @@ fun AppNavigation(
 ) {
     // Activity-scoped results survive Home/Library navigation and remain profile-scoped internally.
     val calendarViewModel: ReleaseCalendarViewModel = hiltViewModel()
-    // Live TV carries no age ratings: a kids profile loses the tab and every way into it.
-    val isKidsProfile = currentProfile?.isKidsProfile == true
-    SideEffect { KidsNavigation.hideLiveTv = isKidsProfile }
+    // Live TV has no age ratings, so default to blocked for kids profiles.
+    // Parents may explicitly enable it when their profile's IPTV source is curated.
+    val hideLiveTvForKids = currentProfile?.canOpenLiveTv == false
+    SideEffect { KidsNavigation.hideLiveTv = hideLiveTvForKids }
     val navigateTopLevel: (String) -> Unit = navigate@{ route ->
-        if (isKidsProfile && route.substringBefore('?') == "tv") return@navigate
+        if (hideLiveTvForKids && route.substringBefore('?') == "tv") return@navigate
         navController.navigate(route) {
             popUpTo(Screen.Home.route) { saveState = true }
             launchSingleTop = true
@@ -432,7 +433,7 @@ fun AppNavigation(
             NavigationRailScreen(navigationRailInset, showRail = !tvHasSubScreen && !tvFullscreen, bottomInset = navigationRailBottomInset) {
                 val initialChannelId = backStackEntry.arguments?.getString("channelId")
                 val initialStreamUrl = backStackEntry.arguments?.getString("streamUrl")
-                if (isKidsProfile) {
+                if (hideLiveTvForKids) {
                     LaunchedEffect(Unit) { navigateHome() }
                     return@NavigationRailScreen
                 }

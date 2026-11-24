@@ -5812,7 +5812,7 @@ private fun MobileSettingsSubPage(
                 }
                 MobileSettingsCategory(title = stringResource(R.string.navigation_sections)) {
                     com.arflix.tv.util.OPTIONAL_NAVIGATION_SECTIONS
-                        .filter { it != "tv" || !uiState.isKidsProfile }
+                        .filter { it != "tv" || !com.arflix.tv.ui.components.KidsNavigation.hideLiveTv }
                         .forEach { section ->
                             val visible = section !in uiState.hiddenNavigationSections
                             MobileSettingsRow(

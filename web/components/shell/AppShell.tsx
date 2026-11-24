@@ -3,7 +3,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useAppPick } from "@/lib/store";
-import { kidsLevelOf } from "@/lib/kids";
+import { canProfileOpenLiveTv } from "@/lib/kidsLiveTv";
 import { config } from "@/lib/config";
 import { ACCENTS } from "@/lib/accents";
 import { useTranslation } from "@/lib/i18n";
@@ -135,11 +135,11 @@ const ShellOverlays = memo(function ShellOverlays() {
 
 export function AppShell() {
   const { auth, goToLogin, signOut, view, section, setSection, settings, selected, activeStream, activeChannel, activeProfile, closePlayer } = useAppPick("auth", "goToLogin", "signOut", "view", "section", "setSection", "settings", "selected", "activeStream", "activeChannel", "activeProfile", "closePlayer");
-  const kidsProfile = Boolean(kidsLevelOf(activeProfile));
-  // A kids profile never stays on Live TV, however it got there (a saved section, a link).
+  const canOpenLiveTv = canProfileOpenLiveTv(activeProfile);
+  // Reject direct URLs and old saved routes unless the parent enabled Live TV.
   useEffect(() => {
-    if (kidsProfile && section === "tv") setSection("home");
-  }, [kidsProfile, section, setSection]);
+    if (!canOpenLiveTv && section === "tv") setSection("home");
+  }, [canOpenLiveTv, section, setSection]);
   const [mounted, setMounted] = useState(false);
   const [collectionOpen, setCollectionOpen] = useState(false);
   // The player chunk mounts on first playback and then stays mounted (it keeps
@@ -232,7 +232,7 @@ export function AppShell() {
           <>
             {section === "search" && <ScreenBoundary screen="search"><SearchScreen /></ScreenBoundary>}
             {section === "watchlist" && <ScreenBoundary screen="library"><WatchlistScreen /></ScreenBoundary>}
-            {section === "tv" && !kidsProfile && <ScreenBoundary screen="tv"><LiveTvScreen /></ScreenBoundary>}
+            {section === "tv" && canOpenLiveTv && <ScreenBoundary screen="tv"><LiveTvScreen /></ScreenBoundary>}
             {section === "addons" && <ScreenBoundary screen="addons"><AddonsScreen /></ScreenBoundary>}
             {section === "settings" && <ScreenBoundary screen="settings"><SettingsScreen /></ScreenBoundary>}
           </>

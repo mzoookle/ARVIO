@@ -110,6 +110,7 @@ fun ProfileSelectionScreen(
         selectProfile = viewModel::selectProfile,
         selectProfileWithLockCheck = viewModel::selectProfileWithLockCheck,
         setKidsAgeLevel = viewModel::setKidsAgeLevel,
+        setAllowKidsLiveTv = viewModel::setAllowKidsLiveTv,
         setKidsProfile = viewModel::setKidsProfile,
         setNewProfileName = viewModel::setNewProfileName,
         setSelectedAvatarId = viewModel::setSelectedAvatarId,
@@ -145,6 +146,7 @@ internal data class ProfileSelectionActions(
     val selectProfile: (Profile) -> Unit = { _ -> },
     val selectProfileWithLockCheck: (Profile) -> Unit = { _ -> },
     val setKidsAgeLevel: (KidsAgeLevel) -> Unit = { _ -> },
+    val setAllowKidsLiveTv: (Boolean) -> Unit = { _ -> },
     val setKidsProfile: (Boolean) -> Unit = { _ -> },
     val setNewProfileName: (String) -> Unit = { _ -> },
     val setSelectedAvatarId: (Int) -> Unit = { _ -> },
@@ -563,6 +565,8 @@ internal fun ProfileSelectionContent(
                 onKidsProfileChange = viewModel.setKidsProfile,
                 kidsAgeLevel = uiState.kidsAgeLevel,
                 onKidsAgeLevelChange = viewModel.setKidsAgeLevel,
+                allowKidsLiveTv = uiState.allowKidsLiveTv,
+                onAllowKidsLiveTvChange = viewModel.setAllowKidsLiveTv,
                 onConfirm = { viewModel.createProfile() },
                 onDismiss = { viewModel.hideAddDialog() }
             )
@@ -586,6 +590,8 @@ internal fun ProfileSelectionContent(
                 onKidsProfileChange = viewModel.setKidsProfile,
                 kidsAgeLevel = uiState.kidsAgeLevel,
                 onKidsAgeLevelChange = viewModel.setKidsAgeLevel,
+                allowKidsLiveTv = uiState.allowKidsLiveTv,
+                onAllowKidsLiveTvChange = viewModel.setAllowKidsLiveTv,
                 onConfirm = { viewModel.updateProfile() },
                 onDelete = { viewModel.deleteProfile(profile); viewModel.hideEditDialog() },
                 onDismiss = { viewModel.hideEditDialog() },

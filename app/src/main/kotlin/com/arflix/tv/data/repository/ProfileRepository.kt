@@ -92,7 +92,8 @@ class ProfileRepository @Inject constructor(
         avatarId: Int = 0,
         isKidsProfile: Boolean = false,
         kidsAgeLevel: String? = null,
-        parentPin: String? = null
+        parentPin: String? = null,
+        allowKidsLiveTv: Boolean = false
     ): Profile {
         val profile = Profile(
             name = name,
@@ -100,6 +101,7 @@ class ProfileRepository @Inject constructor(
             avatarId = avatarId,
             isKidsProfile = isKidsProfile,
             kidsAgeLevel = kidsAgeLevel,
+            allowKidsLiveTv = isKidsProfile && allowKidsLiveTv,
             parentPin = parentPin,
             updatedAt = System.currentTimeMillis()
         )

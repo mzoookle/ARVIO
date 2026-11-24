@@ -71,3 +71,17 @@ test('a stale copy does not overwrite newer kids settings or PIN protection', as
   await cloud.saveCloudProfiles(auth, [{ id: 'p1', name: 'Main' }, { ...newer, kidsAgeLevel: 'OLDER_KIDS', updatedAt: 3000 }], 'p1');
   assert.equal(read().profiles[1].kidsAgeLevel, 'OLDER_KIDS');
 });
+
+
+test('Android kids Live TV permission survives Web cloud read and Web edits propagate to Android', async () => {
+  const fromAndroid = { ...kids, allowKidsLiveTv: true, updatedAt: 2000 };
+  const { cloud, read } = setup({ profiles: [{ id: 'p1', name: 'Main' }, fromAndroid], activeProfileId: 'p1' });
+  assert.equal((await cloud.pullCloudProfiles(auth)).profiles[1].allowKidsLiveTv, true);
+  await cloud.saveCloudProfiles(auth, [{ id: 'p1', name: 'Main' }, { ...fromAndroid, allowKidsLiveTv: false, updatedAt: 3000 }], 'p1');
+  assert.equal(read().profiles[1].allowKidsLiveTv, false);
+  // A stale Android/client snapshot must not undo the more recent parent edit.
+  await cloud.saveCloudProfiles(auth, [{ id: 'p1', name: 'Main' }, fromAndroid], 'p1');
+  assert.equal(read().profiles[1].allowKidsLiveTv, false);
+  const peer = setup(read());
+  assert.equal((await peer.cloud.pullCloudProfiles(auth)).profiles[1].allowKidsLiveTv, false);
+});

@@ -5,7 +5,7 @@ import { useTranslation } from "@/lib/i18n";
 import { BadgeCheck, Bookmark, Home, Search, Settings, Tv } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useAppPick } from "@/lib/store";
-import { kidsLevelOf } from "@/lib/kids";
+import { canProfileOpenLiveTv } from "@/lib/kidsLiveTv";
 import { navigationSectionVisible } from "@/lib/navigationVisibility";
 import { ProfileAvatarVisual } from "@/components/profile/ProfileAvatar";
 import type { NavSection } from "@/lib/types";
@@ -39,8 +39,8 @@ export function TopNav() {
   };
   const [scrolled, setScrolled] = useState(false);
   const barRef = useRef<HTMLElement>(null);
-  // Live TV carries no age ratings: a kids profile loses the tab (Android KidsNavigation).
-  const visibleNav = nav.filter((item) => navigationSectionVisible(item.id, settings.hiddenNavigationSections, Boolean(kidsLevelOf(activeProfile))));
+  // Live TV is hidden for kids unless explicitly enabled by their parent (Android parity).
+  const visibleNav = nav.filter((item) => navigationSectionVisible(item.id, settings.hiddenNavigationSections, activeProfile?.isKidsProfile === true, canProfileOpenLiveTv(activeProfile)));
   const navFocus = useRef<{ button: HTMLButtonElement; container: HTMLElement } | null>(null);
   const visibleNavKey = visibleNav.map((item) => item.id).join("|");
   const rememberNavFocus = (event: React.FocusEvent<HTMLButtonElement>) => {

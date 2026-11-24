@@ -41,6 +41,10 @@ test('every combination preserves essentials and the Kids Live TV restriction', 
       assert.equal(nav.navigationSectionVisible(section, hidden, kids), !hidden.includes(section) && !(kids && section === 'tv'));
     }
   }
+  // Explicit parent opt-in allows the TV tab, but a manual hide still wins.
+  assert.equal(nav.navigationSectionVisible('tv', [], true, true), true);
+  assert.equal(nav.navigationSectionVisible('tv', ['tv'], true, true), false);
+  assert.equal(nav.navigationSectionVisible('tv', [], true, false), false);
   assert.deepEqual(plain(nav.withNavigationSectionVisible(['tv'], 'search', false)), ['search', 'tv']);
   assert.deepEqual(plain(nav.withNavigationSectionVisible(['tv'], 'tv', true)), []);
 });

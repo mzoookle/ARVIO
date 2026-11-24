@@ -12,6 +12,7 @@ import { hashProfilePin, isValidProfilePin } from "@/lib/profilePin";
 /** Kids settings saved with the profile; same fields Android writes (Profile.kt). */
 export interface KidsProfileFields {
   isKidsProfile: boolean;
+  allowKidsLiveTv: boolean;
   kidsAgeLevel: KidsAgeLevel | null;
   parentPin: string | null;
 }
@@ -58,6 +59,7 @@ export function ProfileDialog({ mode, initial, avatarImages = {}, error: externa
   const photo = initial ? customAvatarSrc(initial, avatarImages) : null;
   const [usePhoto, setUsePhoto] = useState(Boolean(photo));
   const [kidsOn, setKidsOn] = useState(Boolean(initial?.isKidsProfile));
+  const [allowKidsLiveTv, setAllowKidsLiveTv] = useState(initial?.allowKidsLiveTv === true);
   const [kidsLevel, setKidsLevel] = useState<KidsAgeLevel>(kidsLevelOf(initial) ?? DEFAULT_KIDS_LEVEL);
   const [parentPin, setParentPin] = useState("");
   const [parentEdit, setParentEdit] = useState(false);
@@ -83,7 +85,8 @@ export function ProfileDialog({ mode, initial, avatarImages = {}, error: externa
       const droppedPhoto = Boolean(initial?.avatarImageVersion) && !usePhoto;
       await onConfirm({
         name: name.trim() || "Profile", avatarColor, avatarId: usePhoto ? 0 : avatarId,
-        isKidsProfile: kidsOn, kidsAgeLevel: kidsOn ? kidsLevel : null, ...pins,
+        isKidsProfile: kidsOn, kidsAgeLevel: kidsOn ? kidsLevel : null,
+        allowKidsLiveTv: kidsOn && allowKidsLiveTv, ...pins,
         ...(droppedPhoto ? { avatarImageVersion: 0, avatarImageStoragePath: null } : {})
       });
     } catch (cause) {
@@ -203,7 +206,7 @@ export function ProfileDialog({ mode, initial, avatarImages = {}, error: externa
           </div>
           {kidsOn && (
             <>
-              <p className="profile-kids-hint">{translateUi("Only titles rated for this age. Unrated titles and Live TV are hidden.")}</p>
+              <p className="profile-kids-hint">{translateUi("Only titles rated for this age. Unrated titles are hidden. Live TV requires separate parent approval.")}</p>
               <h3 className="profile-dialog-label">{translateUi("Max age")}</h3>
               <div className="profile-kids-row" role="radiogroup" aria-label={translateUi("Max age")}>
                 {KIDS_LEVELS.map((level) => (
@@ -212,6 +215,13 @@ export function ProfileDialog({ mode, initial, avatarImages = {}, error: externa
                   </button>
                 ))}
               </div>
+              <h3 className="profile-dialog-label">{translateUi("Live TV")}</h3>
+              <p className="profile-kids-hint">{translateUi("Live channels are not age-rated. Only enable this if this profile has its own kids-only IPTV playlist or account.")}</p>
+              <button type="button" className={`secondary text-button ${allowKidsLiveTv ? "is-active" : ""}`} role="switch"
+                aria-label={translateUi("Allow Live TV on this kids profile")}
+                aria-checked={allowKidsLiveTv} onClick={() => setAllowKidsLiveTv((value) => !value)}>
+                {allowKidsLiveTv ? <Check size={16} /> : null} {translateUi("Allow Live TV")} — {translateUi(allowKidsLiveTv ? "On" : "Off")}
+              </button>
               {initial?.parentPin && !parentEdit && <button type="button" className="secondary text-button profile-change-parent" onClick={() => setParentEdit(true)}>{translateUi("Change parent PIN")}</button>}
               {needsParentPin && (
                 <>

@@ -1071,7 +1071,9 @@
     <string name="profile_kids_little">Up to 7</string>
     <string name="profile_kids_older">Up to 10</string>
     <string name="profile_kids_teens">Up to 14</string>
-    <string name="profile_kids_hint">Only titles rated for this age. Unrated titles and Live TV are hidden.</string>
+    <string name="profile_kids_hint">Only age-rated titles are shown. Unrated titles are hidden; Live TV is blocked unless a parent enables it.</string>
+    <string name="profile_kids_allow_live_tv">Allow Live TV</string>
+    <string name="profile_kids_allow_live_tv_desc">Parent opt-in only. Live streams have no age rating. Configure this profile with a kids-only Dispatcharr playlist before enabling.</string>
     <string name="kids_title_blocked">Not available on this kids profile</string>
     <string name="kids_row_movies">Movies for Kids</string>
     <string name="kids_row_shows">Kids Shows</string>
