@@ -161,6 +161,9 @@
     <string name="show_budget">Show Budget on Home</string>
     <string name="show_loading_stats">Show Loading Stats</string>
     <string name="volume_boost">Volume Boost</string>
+    <string name="audio_effect_compatibility_mode">Audio Effect Compatibility Mode</string>
+    <string name="audio_effect_compatibility_desc">Bypass system loudness effects on this device. Prevents audio stalls on some Sony TVs; Volume Boost stays saved but has no effect while enabled.</string>
+    <string name="player_stuck_audio_effect_advice">Playback stalled. Try enabling Audio Effect Compatibility Mode in Settings, reducing Volume Boost, or choosing another audio track.</string>
     <string name="dns_provider">DNS Provider</string>
     <string name="custom_user_agent">Custom User-Agent</string>
     <string name="custom_user_agent_desc">Leave blank to use ARVIO defaults. Custom values apply when a source does not provide its own User-Agent.</string>

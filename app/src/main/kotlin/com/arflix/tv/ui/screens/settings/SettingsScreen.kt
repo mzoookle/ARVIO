@@ -346,7 +346,7 @@ internal fun tvGeneralRowsForSection(section: String): List<Int> {
             (if (BuildConfig.AUDIO_SYNC_AVAILABLE) listOf(48) else emptyList()) +
             listOf(39, 9, 45)
         "ai_subtitles" -> listOf(28, 29, 30, 31, 32, 33) + LIVE_AI_SUBS_ROWS
-        "playback" -> listOf(10, 11, 62, 12, 43, 44, 61, 55, 13, 14, 34, 37, 16, 15, 40, 27, 53, 54, 60)
+        "playback" -> listOf(10, 11, 12, 43, 44, 61, 55, 13, 14, 34, 37, 16, 15, 40, 27, 62, 53, 54, 60)
         "appearance" -> listOf(17, 49, 50, 18, 20, 21, 24, 23, 22, 41, 46, 36, 47, 56, 57) +
             (if (com.arflix.tv.ui.components.KidsNavigation.hideLiveTv) emptyList() else listOf(58)) + 59
         "profiles" -> listOf(19)
@@ -1503,6 +1503,7 @@ fun SettingsScreen(
                                                 26 -> viewModel.setShowLoadingStats(!uiState.showLoadingStats)
                                                 35 -> showCustomUserAgentDialog = true
                                                 27 -> viewModel.cycleVolumeBoost()
+                                                62 -> viewModel.setAudioEffectCompatibilityEnabled(!uiState.audioEffectCompatibilityEnabled)
                                                 28 -> viewModel.setSubtitleAiEnabled(!uiState.subtitleAiEnabled)
                                                 29 -> showAiModelDialog = true
                                                 30 -> viewModel.setSubtitleAiAutoSelect(!uiState.subtitleAiAutoSelect)
@@ -2136,6 +2137,7 @@ fun SettingsScreen(
                             clockFormat = uiState.clockFormat,
                             showBudget = uiState.showBudget,
                             volumeBoostDb = uiState.volumeBoostDb,
+                            audioEffectCompatibilityEnabled = uiState.audioEffectCompatibilityEnabled,
                             focusedIndex = if (activeZone == Zone.CONTENT) contentFocusIndex else -1,
                             onSubtitleClick = openSubtitlePicker,
                             onSecondarySubtitleClick = openSecondarySubtitlePicker,
@@ -2185,6 +2187,7 @@ fun SettingsScreen(
                             showLoadingStats = uiState.showLoadingStats,
                             onShowLoadingStatsToggle = { viewModel.setShowLoadingStats(it) },
                             onVolumeBoostClick = { viewModel.cycleVolumeBoost() },
+                            onAudioEffectCompatibilityToggle = viewModel::setAudioEffectCompatibilityEnabled,
                             onSubtitleSizeClick = { viewModel.cycleSubtitleSize() },
                             onSubtitleColorClick = { viewModel.cycleSubtitleColor() },
                             onSubtitleOffsetClick = { viewModel.cycleSubtitleOffset() },
@@ -6951,6 +6954,7 @@ private fun TvGeneralSettingsRows(
     spoilerBlurEnabled: Boolean = false,
     accentColor: String = "White",
     volumeBoostDb: Int = 0,
+    audioEffectCompatibilityEnabled: Boolean = false,
     focusedIndex: Int,
     onSubtitleClick: () -> Unit,
     onSecondarySubtitleClick: () -> Unit = {},
@@ -6979,6 +6983,7 @@ private fun TvGeneralSettingsRows(
     showLoadingStats: Boolean = true,
     onShowLoadingStatsToggle: (Boolean) -> Unit = {},
     onVolumeBoostClick: () -> Unit = {},
+    onAudioEffectCompatibilityToggle: (Boolean) -> Unit = {},
     trailerAutoPlay: Boolean = false,
     trailerSoundEnabled: Boolean = false,
     onSubtitleSizeClick: () -> Unit = {},
@@ -7166,6 +7171,14 @@ private fun TvGeneralSettingsRows(
                     isFocused = focusedIndex == localIndex,
                     onClick = onVolumeBoostClick,
                     modifier = Modifier.settingsFocusSlot(localIndex)
+                )
+                62 -> SettingsToggleRow(
+                    stringResource(R.string.audio_effect_compatibility_mode),
+                    stringResource(R.string.audio_effect_compatibility_desc),
+                    audioEffectCompatibilityEnabled,
+                    focusedIndex == localIndex,
+                    onAudioEffectCompatibilityToggle,
+                    Modifier.settingsFocusSlot(localIndex)
                 )
                 28 -> SettingsToggleRow(stringResource(R.string.ai_subtitle_translation_title), stringResource(R.string.ai_subtitle_translation_desc), subtitleAiEnabled, focusedIndex == localIndex, onSubtitleAiEnabledToggle, Modifier.settingsFocusSlot(localIndex))
                 29 -> SettingsRow(

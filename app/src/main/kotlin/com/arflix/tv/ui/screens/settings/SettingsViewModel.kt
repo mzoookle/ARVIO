@@ -64,6 +64,7 @@ import com.arflix.tv.data.repository.MdbListDeviceError
 import com.arflix.tv.data.repository.parseMdbListDeviceError
 import com.arflix.tv.data.repository.MediaRepository
 import com.arflix.tv.data.repository.ProfileManager
+import com.arflix.tv.player.AudioEffectCompatibility
 import com.arflix.tv.data.repository.ProfileRepository
 import com.arflix.tv.data.model.StreamSearchMode
 import com.arflix.tv.data.repository.StreamIntegrationRepository
@@ -262,6 +263,8 @@ data class SettingsUiState(
     // Volume boost in decibels (0 = off, up to 15 dB). Applied via system LoudnessEnhancer
     // attached to the ExoPlayer audio session. Issue #88.
     val volumeBoostDb: Int = 0,
+    /** Device-local; defaults on for Sony Android TV/BRAVIA. */
+    val audioEffectCompatibilityEnabled: Boolean = false,
     // On-disk playback cache (per device, see player/cache/PlaybackCache): the user's size limit,
     // what it holds now, and the most the free space allows (0 = not measured yet).
     val playbackCacheLimitGb: Int = com.arflix.tv.player.cache.PlaybackCache.DEFAULT_LIMIT_GB,
@@ -934,6 +937,8 @@ class SettingsViewModel @Inject constructor(
                 }
             }
             val volumeBoostDb = prefs[volumeBoostDbKey()]?.toIntOrNull()?.coerceIn(0, 15) ?: 0
+            val audioEffectCompatibilityEnabled = prefs[AudioEffectCompatibility.PREF_KEY]
+                ?: AudioEffectCompatibility.defaultEnabled(context)
             val showLoadingStats = prefs[showLoadingStatsKey()] ?: true
             val smoothScrolling = prefs[smoothScrollingKey()] ?: true
             val vodSearchEnabled = prefs[IPTV_VOD_SEARCH_ENABLED_KEY] ?: true
@@ -1045,6 +1050,7 @@ class SettingsViewModel @Inject constructor(
                 animeStructuringStyle = animeStructuringStyle,
                 iptvFavoritesOnHome = iptvFavoritesOnHome,
                 volumeBoostDb = volumeBoostDb,
+                audioEffectCompatibilityEnabled = audioEffectCompatibilityEnabled,
                 showLoadingStats = showLoadingStats,
 
                 subtitleSize = subtitleSize,
@@ -2326,6 +2332,17 @@ class SettingsViewModel @Inject constructor(
             else -> 0
         }
         preferenceWriter.save(volumeBoostDbKey(), next.toString(), { it.volumeBoostDb.toString() }, { state, value -> state.copy(volumeBoostDb = value.toInt()) })
+    }
+
+    /** Does not mark profile/cloud settings dirty: this protects the local device only. */
+    fun setAudioEffectCompatibilityEnabled(enabled: Boolean) {
+        preferenceWriter.save(
+            AudioEffectCompatibility.PREF_KEY,
+            enabled,
+            { it.audioEffectCompatibilityEnabled },
+            { state, value -> state.copy(audioEffectCompatibilityEnabled = value) },
+            sync = false
+        )
     }
 
     fun cycleSubtitleSize() {

@@ -1515,6 +1515,28 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                         // This device closed that session on purpose, so it says nothing about the source.
                         if (com.arflix.tv.network.isIptvStreamSessionClosed(error)) return
 
+                        // StuckPlayerException means READY but no playback clock progress.
+                        // Repreparing the same source with unchanged renderers/effects loops
+                        // indefinitely (and repeatedly flashes the loading overlay).
+                        // Report an actionable error instead of blind retries.
+                        if (error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_TIMEOUT &&
+                            error.cause?.javaClass?.simpleName == "StuckPlayerException"
+                        ) {
+                            android.util.Log.w(
+                                "AudioEffectCompat",
+                                "Stuck playback: compatibility=${latestUiState.audioEffectCompatibilityEnabled}; " +
+                                    "boostDb=${latestUiState.volumeBoostDb}; suppressing same-config retries"
+                            )
+                            if (!playbackIssueReported) {
+                                playbackIssueReported = true
+                                viewModel.onSelectedStreamPlaybackFailure()
+                                viewModel.reportPlaybackError(
+                                    PlayerMessage.Res(R.string.player_stuck_audio_effect_advice)
+                                )
+                            }
+                            return
+                        }
+
                         // If playback was already running (has started), transient IO/timeout errors
                         // during seek or normal playback should attempt recovery by re-preparing
                         // at the current position instead of failing over to another source.
@@ -3743,7 +3765,8 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
     // the user changes the boost in Settings (though in practice that requires reopening
     // the player since Settings changes don't propagate mid-session yet). 0 dB = no
     // effect created, no CPU cost. Issue #88.
-    DisposableEffect(uiState.volumeBoostDb, uiState.audioNormalization, exoPlayer.audioSessionId) {
+    DisposableEffect(uiState.volumeBoostDb, uiState.audioNormalization,
+        uiState.audioEffectCompatibilityEnabled, exoPlayer.audioSessionId) {
         val sessionId = exoPlayer.audioSessionId
         val targetGainMb = if (uiState.audioNormalization) {
             maxOf(uiState.volumeBoostDb * 100, 500)
@@ -3751,7 +3774,7 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
             uiState.volumeBoostDb * 100
         }
         val enhancer: android.media.audiofx.LoudnessEnhancer? =
-            if (targetGainMb > 0 && sessionId != C.AUDIO_SESSION_ID_UNSET) {
+            if (!uiState.audioEffectCompatibilityEnabled && targetGainMb > 0 && sessionId != C.AUDIO_SESSION_ID_UNSET) {
                 try {
                     android.media.audiofx.LoudnessEnhancer(sessionId).apply {
                         setTargetGain(targetGainMb)
@@ -3764,6 +3787,9 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
             } else {
                 null
             }
+        if (uiState.audioEffectCompatibilityEnabled && targetGainMb > 0) {
+            android.util.Log.i("AudioEffectCompat", "LoudnessEnhancer bypassed on this device")
+        }
         onDispose {
             runCatching {
                 enhancer?.enabled = false

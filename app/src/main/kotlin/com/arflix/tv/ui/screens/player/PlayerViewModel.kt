@@ -54,6 +54,7 @@ import com.arflix.tv.data.repository.TraktRepository
 import com.arflix.tv.data.repository.WatchHistoryEntry
 import com.arflix.tv.data.repository.WatchHistoryRepository
 import com.arflix.tv.util.AnimeMapper
+import com.arflix.tv.player.AudioEffectCompatibility
 import com.arflix.tv.util.AppLogger
 import com.arflix.tv.util.Constants
 import com.arflix.tv.util.EpisodeAvailability
@@ -246,6 +247,8 @@ data class PlayerUiState(
     // Volume boost in decibels. 0 = disabled, up to 15 dB. The player observes this
     // and attaches a LoudnessEnhancer to the ExoPlayer audio session. Issue #88.
     val volumeBoostDb: Int = 0,
+    /** Device-scoped: bypass system audio effects on affected TV hardware. */
+    val audioEffectCompatibilityEnabled: Boolean = false,
     // Show loading progress during stream resolution
     val showLoadingStats: Boolean = true,
     // Skip intro/recap
@@ -921,6 +924,8 @@ class PlayerViewModel @Inject constructor(
             val showLoadingStats = prefs[showLoadingStatsKey()] ?: true
             val volumeBoostDb = prefs[profileManager.profileStringKey("volume_boost_db")]
                 ?.toIntOrNull()?.coerceIn(0, 15) ?: 0
+            val audioEffectCompatibilityEnabled = prefs[AudioEffectCompatibility.PREF_KEY]
+                ?: AudioEffectCompatibility.defaultEnabled(context)
             val installedAddons = streamRepository.installedAddons.first()
             currentInstalledAddons = installedAddons
             val orderedAddonIds = streamIntegrationRepository.getUnifiedSourceOrderedIds().first()
@@ -994,6 +999,7 @@ class PlayerViewModel @Inject constructor(
                 audioNormalization = audioNormalization,
                 showLoadingStats = showLoadingStats,
                 volumeBoostDb = volumeBoostDb,
+                audioEffectCompatibilityEnabled = audioEffectCompatibilityEnabled,
                 subtitlePreloadEnabled = subtitlePreloadEnabled,
                 dolbyVisionCompatEnabled = prefs[dolbyVisionCompatPrefKey] ?: true,
                 // Nothing to preload without a preferred language — don't make the gate wait.
