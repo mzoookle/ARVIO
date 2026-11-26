@@ -1,0 +1,1 @@
+This is where your admin hosted apks and latest.json goes

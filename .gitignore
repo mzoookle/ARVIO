@@ -190,6 +190,11 @@ release-attestation.key
 *.jks
 *.keystore
 release-upload.json
+__pycache__/
+private-cloud-release/releases/*
+!private-cloud-release/releases/updates/
+private-cloud-release/releases/updates/*
+!private-cloud-release/releases/updates/README.md
 
 # Android signing secrets
 secrets.properties
