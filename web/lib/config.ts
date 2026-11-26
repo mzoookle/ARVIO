@@ -125,7 +125,7 @@ export function hasSimklConfig() {
 }
 
 export function getAuthPortalUrl(): string {
-  if (config.selfHosted) return config.authPortalUrl || "/";
+  if (config.selfHosted) return config.authPortalUrl ? `${config.authPortalUrl}/` : "/portal/";
   const backend = config.netlifyBackendUrl;
   try {
     const url = new URL(backend);

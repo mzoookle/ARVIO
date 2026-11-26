@@ -3,3 +3,6 @@ window.ARVIO_WEB_ORIGIN = "${ARVIO_WEB_ORIGIN}";
 
 window.ARVIO_OIDC_ENABLED = "${ARVIO_OIDC_ENABLED}" === "true";
 window.ARVIO_AUTH_PORTAL_ORIGIN = "${ARVIO_AUTH_PORTAL_ORIGIN}";
+// Public routing contract; paths are deliberately not individual hostnames.
+window.ARVIO_PORTAL_BASE_PATH = "/portal";
+window.ARVIO_CLOUD_API_BASE_PATH = "/api/cloud";

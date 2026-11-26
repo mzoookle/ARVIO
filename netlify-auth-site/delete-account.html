@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>Delete ARVIO account</title>
-  <link rel="icon" href="/assets/arvio-icon-512.png" type="image/png">
+  <link rel="icon" href="/portal/assets/arvio-icon-512.png" type="image/png">
   <style>
     :root {
       --bg: #050505;
@@ -238,7 +238,7 @@
 <body>
   <header class="topbar">
     <div class="topbar-inner">
-      <img class="brand" src="/assets/arvio-wordmark.png" alt="ARVIO">
+      <img class="brand" src="/portal/assets/arvio-wordmark.png" alt="ARVIO">
     </div>
   </header>
 
@@ -311,10 +311,10 @@
     </section>
   </main>
 
-  <script src="/portal-config.js"></script>
+  <script src="/portal/portal-config.js"></script>
   <script>
     const APP_ANON_KEY = String(window.ARVIO_APP_ANON_KEY || "");
-    const FUNCTIONS = "/.netlify/functions";
+    const FUNCTIONS = "/api/cloud";
 
     const loginStage = document.getElementById("login-stage");
     const confirmStage = document.getElementById("confirm-stage");

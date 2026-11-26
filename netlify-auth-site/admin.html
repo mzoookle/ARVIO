@@ -19,7 +19,7 @@
 </head>
 <body>
   <main class="shell">
-    <header class="top"><div class="brand">ARVIO <span>PRIVATE CLOUD</span> / ADMIN</div><a href="/" class="muted">Account portal</a></header>
+    <header class="top"><div class="brand">ARVIO <span>PRIVATE CLOUD</span> / ADMIN</div><a href="/portal/" class="muted">Account portal</a></header>
     <section id="login" class="panel login">
       <h1>Administrator sign in</h1>
       <p class="muted">Sign in with an account authorized by the Keycloak <code>/arvio</code> group or the server's administrator email allowlist.</p>
@@ -69,9 +69,9 @@
     </section>
     <div class="footer">Private administrator interface. All administrative API actions are authorized and audited server-side.</div>
   </main>
-<script src="/portal-config.js"></script>
+<script src="/portal/portal-config.js"></script>
 <script type="module">
-  const API = "/.netlify/functions";
+  const API = "/api/cloud";
   const ANON = String(window.ARVIO_APP_ANON_KEY || "");
   const $ = (id) => document.getElementById(id);
   let token = "";
@@ -285,7 +285,7 @@
   $("keycloakLogin").addEventListener("click",async()=>{
     setStatus("oidcStatus","Redirecting to Keycloak…");
     try {
-      const response=await fetch(`${API}/oidc-start`,{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:`Bearer ${ANON}`},body:JSON.stringify({return_to:`${window.location.origin}/admin`})});
+      const response=await fetch(`${API}/oidc-start`,{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:`Bearer ${ANON}`},body:JSON.stringify({return_to:`${window.location.origin}/portal/admin`})});
       const data=await response.json().catch(()=>({}));
       if(!response.ok)throw new Error(data.error||"Unable to start Keycloak sign-in.");
       if(!data.authorize_url||!data.state)throw new Error("Keycloak did not return a valid authorization request.");

@@ -89,7 +89,9 @@ async function start(event, link=false) {
   // For account linking, choose the return destination on the server. This
   // avoids rejecting a valid link flow because portal-config.js and the API
   // environment drifted or because the browser supplied a slightly different URL.
-  const portalOrigin = String(process.env.ARVIO_AUTH_PORTAL_ORIGIN || new URL(cfg.redirectUri).origin).replace(/\/$/, "");
+  // ARVIO_AUTH_PORTAL_ORIGIN is the public base URL including /portal.
+  // Fallback is derived from the callback URL, not from the hostname root.
+  const portalOrigin = String(process.env.ARVIO_AUTH_PORTAL_ORIGIN || new URL("/portal", cfg.redirectUri).href).replace(/\/+$/, "");
   // Use the routed portal path, not the physical HTML filename. This keeps
   // the browser URL stable and avoids a trailing slash being appended to a
   // .html file when the callback returns the ARVIO session fragment.

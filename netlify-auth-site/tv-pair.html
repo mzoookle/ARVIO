@@ -19,9 +19,9 @@
     <h1>Pair your TV</h1>
     <p id="status" role="status" aria-live="polite">Completing your Keycloak sign-in…</p>
     <p id="details"></p>
-    <p><a href="/">Return to the account portal</a></p>
+    <p><a href="/portal/">Return to the account portal</a></p>
   </main>
-  <script src="/portal-config.js"></script>
+  <script src="/portal/portal-config.js"></script>
   <script>
   (async () => {
     const status = document.getElementById("status");
@@ -43,7 +43,7 @@
       const anonKey = String(window.ARVIO_APP_ANON_KEY || "");
       if (!anonKey) throw new Error("The account portal is missing its public API configuration.");
       status.textContent = "Approving TV pairing…";
-      const response = await fetch("/.netlify/functions/tv-auth-approve", {
+      const response = await fetch("/api/cloud/tv-auth-approve", {
         method: "POST",
         headers: {
           "content-type": "application/json",

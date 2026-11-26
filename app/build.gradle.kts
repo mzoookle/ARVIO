@@ -99,6 +99,12 @@ android {
             "NETLIFY_BACKEND_URL",
             "\"${escapeBuildConfigString(localSecretValue("NETLIFY_BACKEND_URL"))}\""
         )
+        // Public auth portal URL. Private builds use https://<host>/portal.
+        buildConfigField(
+            "String",
+            "ARVIO_AUTH_PORTAL_URL",
+            "\"${escapeBuildConfigString(localSecretValue("ARVIO_AUTH_PORTAL_URL"))}\""
+        )
         buildConfigField(
             "String",
             "APP_ANON_KEY",

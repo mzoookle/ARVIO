@@ -15,6 +15,13 @@ object Constants {
     val APP_ANON_KEY: String get() = BuildConfig.APP_ANON_KEY
     val NETLIFY_BACKEND_URL: String
         get() = BuildConfig.NETLIFY_BACKEND_URL.trim().trimEnd('/')
+    // Used only for browser links/fallbacks; the cloud API base is separate.
+    val AUTH_PORTAL_URL: String
+        get() = BuildConfig.ARVIO_AUTH_PORTAL_URL.trim().trimEnd('/').ifBlank {
+            NETLIFY_BACKEND_URL.takeIf { it.endsWith("/api/cloud") }
+                ?.removeSuffix("/api/cloud")?.plus("/portal")
+                ?: "https://auth.arvio.tv"
+        }
     val USE_NETLIFY_CLOUD_SYNC: Boolean
         get() = BuildConfig.ENABLE_NETLIFY_CLOUD_SYNC && (NETLIFY_BACKEND_URL.startsWith("https://") || NETLIFY_BACKEND_URL.startsWith("http://"))
 

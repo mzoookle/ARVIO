@@ -312,7 +312,7 @@ class SettingsFocusTracker {
 
 val LocalSettingsFocusTracker = compositionLocalOf<SettingsFocusTracker?> { null }
 
-private const val ACCOUNT_DELETION_URL = "https://auth.arvio.tv/delete"
+private val ACCOUNT_DELETION_URL: String get() = "${com.arflix.tv.util.Constants.AUTH_PORTAL_URL}/delete"
 private const val PRIVACY_POLICY_URL = "https://arvio.tv/privacy"
 
 private fun isRepeatedSettingsSelect(event: androidx.compose.ui.input.key.KeyEvent): Boolean =

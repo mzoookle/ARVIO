@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ARVIO Account</title>
-  <link rel="icon" href="/assets/arvio-icon-512.png" type="image/png">
+  <link rel="icon" href="/portal/assets/arvio-icon-512.png" type="image/png">
   <style>
     :root {
       --bg-1: #0a0806;
@@ -399,17 +399,17 @@
       </div>
 
       <p class="small" id="tvHelp">If you opened this from a TV QR code, signing in will automatically pair that TV.</p>
-      <p class="discord-link"><a class="privacy-link" href="/account/security">Account security · Set an ARVIO app password</a></p>
-      <p class="discord-link" id="discordEntry" hidden><a class="privacy-link" href="/?discord=1">Link your Premium Discord badge</a></p>
+      <p class="discord-link"><a class="privacy-link" href="/portal/account/security">Account security · Set an ARVIO app password</a></p>
+      <p class="discord-link" id="discordEntry" hidden><a class="privacy-link" href="/portal/?discord=1">Link your Premium Discord badge</a></p>
       <section id="discordClaim" hidden aria-label="Discord Premium badge">
         <button class="btn primary" id="discordConnect" type="button">Link Discord</button>
-        <p class="discord-link"><a class="privacy-link" href="/">Back to Account Access</a></p>
+        <p class="discord-link"><a class="privacy-link" href="/portal/">Back to Account Access</a></p>
       </section>
       <p class="discord-link" id="discordJoin" hidden><a class="premium-link" href="https://discord.gg/UavuEYMfQ4" target="_blank" rel="noopener noreferrer">Join the ARVIO Discord</a></p>
       <div class="foot">ARVIO Cloud Auth</div>
       <div class="privacy-links">
         <a class="privacy-link" href="https://arvio.tv/privacy">Privacy Policy</a>
-        <a class="privacy-link" href="/delete-account">Delete account</a>
+        <a class="privacy-link" href="/portal/delete-account">Delete account</a>
       </div>
     </section>
     <div class="site-note">
@@ -559,11 +559,11 @@
     })();
   </script>
 
-  <script src="/portal-config.js"></script>
+  <script src="/portal/portal-config.js"></script>
   <script type="module">
     const APP_ANON_KEY = String(window.ARVIO_APP_ANON_KEY || "");
 
-    const FUNCTION_BASE = "/.netlify/functions";
+    const FUNCTION_BASE = "/api/cloud";
     const qs = new URLSearchParams(window.location.search);
     const pairCode = (qs.get("code") || "").trim();
     const redirectUri = (qs.get("redirect_uri") || "").trim();
@@ -613,7 +613,7 @@
         if (pendingTvCode && !/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(pendingTvCode)) {
           throw new Error("Invalid TV pairing code. Start a new pairing on your TV.");
         }
-        const returnTo = pendingTvCode ? `${window.location.origin}/tv-pair` : window.ARVIO_WEB_ORIGIN;
+        const returnTo = pendingTvCode ? `${window.location.origin}/portal/tv-pair` : window.ARVIO_WEB_ORIGIN;
         if (pendingTvCode) sessionStorage.setItem("arvio.oidc.pendingTvCode", pendingTvCode);
         const response = await fetch(`${FUNCTION_BASE}/oidc-start`, { method: "POST", headers: { "content-type": "application/json", apikey: APP_ANON_KEY, Authorization: `Bearer ${APP_ANON_KEY}` }, body: JSON.stringify({ return_to: returnTo }) });
         const data = await response.json().catch(() => ({}));
